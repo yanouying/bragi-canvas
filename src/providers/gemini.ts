@@ -2,6 +2,7 @@ import type { ImageProvider, GenerateImageResult } from './types'
 import type { App } from 'obsidian'
 import { requestUrl } from 'obsidian'
 import { stringParam } from './params'
+import { throwForGoogleError } from './google-errors'
 
 interface GeminiInlineData {
 	data?: string
@@ -52,6 +53,7 @@ export class GeminiProvider implements ImageProvider {
 				'Content-Type': 'application/json',
 				'x-goog-api-key': this.apiKey,
 			},
+			throw: false,
 			body: JSON.stringify({
 				contents: [{
 					parts,
@@ -67,9 +69,7 @@ export class GeminiProvider implements ImageProvider {
 		})
 
 		const data = response.json
-		if (data.error) {
-			throw new Error(`Gemini: ${data.error.message || JSON.stringify(data.error)}`)
-		}
+		throwForGoogleError('Gemini', response)
 
 		// Find the image part in the response
 		const candidates = data.candidates || []

@@ -2,14 +2,13 @@ import type { VideoProvider, GenerateVideoResult } from './types'
 import type { App } from 'obsidian'
 import { requestUrl } from 'obsidian'
 import { stringParam } from './params'
+import { throwForGoogleError } from './google-errors'
 
 const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 
 interface VeoImage {
-	inlineData: {
-		mimeType: string
-		data: string
-	}
+	bytesBase64Encoded: string
+	mimeType: string
 }
 
 interface VeoInstance {
@@ -66,7 +65,7 @@ export class VeoProvider implements VideoProvider {
 		const usesImageInput = Boolean(instance.image || instance.lastFrame || instance.referenceImages?.length)
 		const usesReferenceImages = Boolean(instance.referenceImages?.length)
 		const durationSeconds = normalizeDuration(
-			stringParam(params?.durationSeconds, '6'),
+			Number.parseInt(stringParam(params?.durationSeconds, '6'), 10),
 			resolution,
 			usesReferenceImages,
 			effectiveMode === 'first-last-frame',
@@ -79,6 +78,7 @@ export class VeoProvider implements VideoProvider {
 				'Content-Type': 'application/json',
 				'x-goog-api-key': this.apiKey,
 			},
+			throw: false,
 			body: JSON.stringify({
 				instances: [instance],
 				parameters: {
@@ -91,10 +91,7 @@ export class VeoProvider implements VideoProvider {
 		})
 
 		const data = response.json
-
-		if (data.error) {
-			throw new Error(`Veo: ${data.error.message || JSON.stringify(data.error)}`)
-		}
+		throwForGoogleError('Veo', response)
 
 		// The response contains an operation name for polling
 		const operationName = data.name
@@ -112,13 +109,11 @@ export class VeoProvider implements VideoProvider {
 			headers: {
 				'x-goog-api-key': this.apiKey,
 			},
+			throw: false,
 		})
 
 		const data = response.json
-
-		if (data.error) {
-			throw new Error(`Veo: ${data.error.message}`)
-		}
+		throwForGoogleError('Veo', response)
 
 		if (data.done) {
 			// Extract video URI
@@ -143,7 +138,9 @@ export class VeoProvider implements VideoProvider {
 			headers: {
 				'x-goog-api-key': this.apiKey,
 			},
+			throw: false,
 		})
+		throwForGoogleError('Veo', response)
 		const timestamp = Date.now()
 		const fileName = `vid_${timestamp}.mp4`
 		const filePath = `${this.outputDir}/${fileName}`
@@ -162,10 +159,8 @@ function parseDataUri(dataUri: string): VeoImage | null {
 	const match = dataUri.match(/^data:([^;]+);base64,(.+)$/)
 	if (!match) return null
 	return {
-		inlineData: {
-			mimeType: match[1],
-			data: match[2],
-		},
+		bytesBase64Encoded: match[2],
+		mimeType: match[1],
 	}
 }
 
@@ -179,16 +174,17 @@ function getEffectiveMode(genMode: string, imageCount: number): string {
 }
 
 function normalizeDuration(
-	durationSeconds: string,
+	durationSeconds: number,
 	resolution: string,
 	usesReferenceImages: boolean,
 	usesInterpolation: boolean,
-): string {
+): number {
+	const safeDuration = [4, 6, 8].includes(durationSeconds) ? durationSeconds : 6
 	if (
 		(resolution === '1080p' || resolution === '4k' || usesReferenceImages || usesInterpolation)
-		&& durationSeconds !== '8'
+		&& safeDuration !== 8
 	) {
-		return '8'
+		return 8
 	}
-	return durationSeconds
+	return safeDuration
 }
