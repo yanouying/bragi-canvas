@@ -44,12 +44,14 @@ function inferMode(modes: Mode[], imageCount: number, videoCount: number): Mode 
 		if (modes.includes('first-last-frame')) return 'first-last-frame'
 		if (modes.includes('multi-image-ref')) return 'multi-image-ref'
 		if (modes.includes('image-ref')) return 'image-ref'
+		if (modes.includes('image-ref-to-image')) return 'image-ref-to-image'
 	}
 
-	// 1 image → prefer first-frame, then image-ref
+	// 1 image → prefer first-frame, then image-ref (video), then image-ref-to-image (image)
 	if (imageCount === 1) {
 		if (modes.includes('first-frame')) return 'first-frame'
 		if (modes.includes('image-ref')) return 'image-ref'
+		if (modes.includes('image-ref-to-image')) return 'image-ref-to-image'
 	}
 
 	// No special inputs → text-to-video/image/text
@@ -64,20 +66,27 @@ let activeBar: HTMLElement | null = null
 let dismissHandler: (() => void) | null = null
 let positionRAF: number | null = null
 
-/** Auto-size a <select> to fit only the currently selected option text */
-function autoSizeSelect(select: HTMLSelectElement): void {
+/**
+ * Auto-size a <select> to fit only the currently selected option text.
+ * Returns an `update()` — call it after programmatically changing options/value,
+ * since assigning .value or innerHTML doesn't fire a `change` event.
+ */
+function autoSizeSelect(select: HTMLSelectElement): () => void {
 	const measure = document.createElement('span')
 	measure.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font:inherit;padding:0;'
-	select.parentElement?.appendChild(measure)
 	const update = () => {
+		// Defer the first call until the select is attached to the DOM — otherwise
+		// measure.offsetWidth is always 0 and the control collapses to ~26px.
+		const parent = select.parentElement
+		if (!parent) return
+		if (measure.parentElement !== parent) parent.appendChild(measure)
 		const text = select.options[select.selectedIndex]?.text || ''
 		measure.textContent = text
-		// 20px right padding for chevron
 		select.style.width = `${measure.offsetWidth + 26}px`
 	}
 	select.addEventListener('change', update)
-	// Initial size
 	requestAnimationFrame(update)
+	return update
 }
 
 export function showGenerateBar(
@@ -196,6 +205,7 @@ export function showGenerateBar(
 
 		modeSelect.value = inferred
 		selectedMode = inferred
+		resizeMode()
 	}
 
 	function initDefaults() {
@@ -217,10 +227,18 @@ export function showGenerateBar(
 		if (!selectedModel) return
 		for (const param of selectedModel.params) {
 			if (param.type === 'select' && param.options) {
+				// Pick mode-specific options if declared; otherwise the base list.
+				const effectiveOptions = (selectedMode && param.optionsByMode?.[selectedMode]) || param.options
+
+				// If current value isn't valid in the new option set, snap back to default.
+				const currentValue = String(paramValues[param.id] ?? param.default)
+				const valid = effectiveOptions.some(o => o.value === currentValue)
+				if (!valid) paramValues[param.id] = param.default
+
 				const select = document.createElement('select')
 				select.className = 'bragi-bar-select'
 				select.title = param.label
-				for (const opt of param.options) {
+				for (const opt of effectiveOptions) {
 					const optEl = document.createElement('option')
 					optEl.value = opt.value
 					optEl.textContent = opt.label
@@ -322,6 +340,7 @@ export function showGenerateBar(
 			savedParams = (lastModel && last?.params) ? last.params : null
 		}
 
+		resizeModel()
 		initDefaults()
 		rebuildModeList()
 
@@ -389,6 +408,8 @@ export function showGenerateBar(
 
 	modeSelect.addEventListener('change', () => {
 		selectedMode = (modeSelect.value as Mode) || null
+		// Params may be mode-dependent (e.g. xAI video duration caps at 10s for image-ref).
+		rebuildParams()
 		updateRunState()
 	})
 
@@ -450,6 +471,12 @@ export function showGenerateBar(
 
 	// ── Initialize ──
 
+	// Register auto-sizers BEFORE first rebuild so rebuildModeList can call resizeMode()
+	// after it programmatically fills options (.value = … doesn't fire `change`).
+	const resizeModel = autoSizeSelect(modelSelect)
+	const resizeMode = autoSizeSelect(modeSelect)
+	autoSizeSelect(batchSelect)
+
 	rebuildModelList()
 
 	// Restore last batch count (node metadata > global)
@@ -463,11 +490,6 @@ export function showGenerateBar(
 	}
 
 	updateRunState()
-
-	// Auto-size all selects to fit selected text
-	autoSizeSelect(modelSelect)
-	autoSizeSelect(modeSelect)
-	autoSizeSelect(batchSelect)
 
 	// ── Attach to DOM ──
 
@@ -612,6 +634,7 @@ export function showBatchGenerateBar(
 		}
 		selectedMode = selectedModel.modes[0]
 		modeSelect.value = selectedMode
+		resizeMode()
 	}
 
 	function initDefaults() {
@@ -627,10 +650,14 @@ export function showBatchGenerateBar(
 		if (!selectedModel) return
 		for (const param of selectedModel.params) {
 			if (param.type === 'select' && param.options) {
+				const effectiveOptions = (selectedMode && param.optionsByMode?.[selectedMode]) || param.options
+				const currentValue = String(paramValues[param.id] ?? param.default)
+				if (!effectiveOptions.some(o => o.value === currentValue)) paramValues[param.id] = param.default
+
 				const select = document.createElement('select')
 				select.className = 'bragi-bar-select'
 				select.title = param.label
-				for (const opt of param.options) {
+				for (const opt of effectiveOptions) {
 					const optEl = document.createElement('option')
 					optEl.value = opt.value
 					optEl.textContent = opt.label
@@ -686,6 +713,7 @@ export function showBatchGenerateBar(
 			selectedModel = lastModel || models[0]
 			modelSelect.value = selectedModel.id
 		}
+		resizeModel()
 		initDefaults()
 		rebuildModeList()
 		rebuildParams()
@@ -700,6 +728,7 @@ export function showBatchGenerateBar(
 
 	modeSelect.addEventListener('change', () => {
 		selectedMode = (modeSelect.value as Mode) || null
+		rebuildParams()
 	})
 
 	runBtn.addEventListener('click', (e) => {
@@ -735,15 +764,15 @@ export function showBatchGenerateBar(
 		})
 	})
 
+	const resizeModel = autoSizeSelect(modelSelect)
+	const resizeMode = autoSizeSelect(modeSelect)
+	autoSizeSelect(batchSelect)
+
 	rebuildModelList()
 
 	const globalLastKey = currentType === 'image' ? 'lastImage' : currentType === 'video' ? 'lastVideo' : 'lastText'
 	const globalLast = (settings as any)[globalLastKey] as any
 	if (globalLast?.batchCount) batchSelect.value = String(globalLast.batchCount)
-
-	autoSizeSelect(modelSelect)
-	autoSizeSelect(modeSelect)
-	autoSizeSelect(batchSelect)
 
 	// Attach to DOM — use the first node's canvas
 	const nodeCanvas = nodes[0].canvas

@@ -80,6 +80,8 @@ export interface BragiSettings {
 		legnext: string
 		tokenrouter: string
 		apimart: string
+		lumaToken: string
+		xai: string
 	}
 
 	// Per-model preferences
@@ -130,6 +132,8 @@ export const DEFAULT_SETTINGS: BragiSettings = {
 		legnext: '',
 		tokenrouter: '',
 		apimart: '',
+		lumaToken: '',
+		xai: '',
 	},
 	modelPrefs: {},
 	modelOrder: {

@@ -102,6 +102,7 @@ export class FalVideoProvider implements VideoProvider {
 		let modelId = params?.modelId || 'xai/grok-imagine-video'
 		const genMode = params?.genMode || 'text-to-video'
 		const refImages: string[] = params?.refImages || []
+		const refVideos: string[] = params?.refVideos || []
 
 		// Route to correct sub-endpoint based on mode
 		const modelBase = modelId.split('/text-to-video')[0].split('/image-to-video')[0]
@@ -151,6 +152,13 @@ export class FalVideoProvider implements VideoProvider {
 			} else if (genMode === 'image-ref') {
 				input.image_urls = uploadedUrls
 			}
+		}
+
+		if (genMode === 'video-extend') {
+			if (refVideos.length === 0) {
+				throw new Error('video-extend requires an upstream video connected to this prompt node')
+			}
+			input.video_url = refVideos[0]
 		}
 
 		// Submit to queue (video is always async)

@@ -5,10 +5,11 @@ import { seedream5, seedream45 } from './seedream'
 import { seedance2, seedance2Fast } from './seedance'
 import { kling3, kling26 } from './kling'
 import { veo31, veo31Lite } from './veo'
-import { gpt54, gpt54Pro, gemini31Pro, gemini3Flash, claudeOpus47, claudeSonnet46, qwen36Plus } from './text-gen'
+import { gpt54, gpt54Pro, gemini31Pro, gemini3Flash, claudeOpus47, claudeSonnet46, qwen36Plus, grok43, grok4Fast } from './text-gen'
 import { grokImagine, grokVideo } from './grok'
 import { midjourneyV8, midjourneyNiji7 } from './midjourney'
-import { elevenLabsTTS, minimaxTTS, elevenLabsMusic, minimaxMusic, elevenLabsSFX } from './audio'
+import { lumaUni1 } from './luma'
+import { elevenLabsTTS, minimaxTTS, grokTTS, elevenLabsMusic, minimaxMusic, elevenLabsSFX } from './audio'
 
 // All registered models (default order within each type)
 export const ALL_MODELS: ModelConfig[] = [
@@ -19,6 +20,7 @@ export const ALL_MODELS: ModelConfig[] = [
 	grokImagine,
 	midjourneyV8,
 	midjourneyNiji7,
+	lumaUni1,
 	seedream5,
 	seedream45,
 	// Video
@@ -34,12 +36,15 @@ export const ALL_MODELS: ModelConfig[] = [
 	claudeSonnet46,
 	gemini3Flash,
 	gemini31Pro,
+	grok43,
+	grok4Fast,
 	qwen36Plus,
 	gpt54Pro,
 	gpt54,
 	// Audio
 	elevenLabsTTS,
 	minimaxTTS,
+	grokTTS,
 	elevenLabsMusic,
 	minimaxMusic,
 	elevenLabsSFX,
@@ -76,6 +81,8 @@ export function getConfiguredProviders(providers: Record<string, string>): strin
 	if (providers.legnext) result.push('legnext')
 	if (providers.tokenrouter) result.push('tokenrouter')
 	if (providers.apimart) result.push('apimart')
+	if (providers.lumaToken) result.push('luma')
+	if (providers.xai) result.push('xai')
 	return result
 }
 

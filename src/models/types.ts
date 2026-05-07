@@ -17,6 +17,13 @@ export interface ModelParam {
 	label: string
 	type: 'select' | 'number' | 'range'
 	options?: ParamOption[]
+	/**
+	 * Mode-specific option overrides. When the user picks one of these modes, the
+	 * param's dropdown is rebuilt from `optionsByMode[mode]` instead of `options`.
+	 * If the currently-selected value isn't in the new list, it snaps back to `default`.
+	 * Used e.g. for xAI video where image-ref caps duration at 10s while others go to 15s.
+	 */
+	optionsByMode?: Record<string, ParamOption[]>
 	default: string | number
 	min?: number
 	max?: number

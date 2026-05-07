@@ -60,7 +60,7 @@ export default class BragiCanvas extends Plugin {
 
 		// Force all file-opens into new tabs — protects in-flight generation placeholders
 		// from getting swapped out when the user clicks another file.
-		this.register(installAlwaysNewTab())
+		this.register(installAlwaysNewTab(this.app))
 
 		// Right-click menu: Set Asset ID on image nodes
 		this.registerEvent(
@@ -410,6 +410,18 @@ export default class BragiCanvas extends Plugin {
 				}
 			}
 
+			// Upload reference videos (used by video-extend mode)
+			const refVideos: string[] = []
+			if (model.type === 'video' && mode === 'video-extend' && upstream.videos.length > 0) {
+				for (const videoPath of upstream.videos) {
+					const binary = await this.app.vault.adapter.readBinary(videoPath)
+					const ext = videoPath.split('.').pop()?.toLowerCase() || 'mp4'
+					const mime = ext === 'mov' ? 'video/quicktime' : ext === 'webm' ? 'video/webm' : 'video/mp4'
+					const videoUrl = await uploadRef(undefined, binary, `ref.${ext}`, mime)
+					refVideos.push(videoUrl)
+				}
+			}
+
 			if (model.type === 'image') {
 				const spec = getProvider(activeProvider)
 				const provider = spec?.makeImage?.({ settings: this.settings, app: this.app, outputDir })
@@ -433,7 +445,7 @@ export default class BragiCanvas extends Plugin {
 					markNodeFailed(placeholder, `${activeProvider} doesn't support video generation`)
 					return
 				}
-				const videoResult = await provider.generateVideo(finalPrompt, { ...params, modelId: apiModelId, genMode: mode, refImages, refAudios })
+				const videoResult = await provider.generateVideo(finalPrompt, { ...params, modelId: apiModelId, genMode: mode, refImages, refAudios, refVideos })
 
 				if (videoResult.done && videoResult.filePath) {
 					// Rare: synchronous completion

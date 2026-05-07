@@ -78,6 +78,48 @@ export const minimaxTTS: ModelConfig = {
 	],
 }
 
+export const grokTTS: ModelConfig = {
+	id: 'grok-tts',
+	name: 'Grok TTS',
+	type: 'audio',
+	supportedProviders: {
+		xai: { apiModelId: 'grok-tts' },
+	},
+	modes: ['tts'],
+	params: [
+		{
+			id: 'voice',
+			label: 'Voice',
+			type: 'select',
+			options: [
+				{ label: 'Eve (F)', value: 'eve' },
+				{ label: 'Ara (F)', value: 'ara' },
+				{ label: 'Leo (M)', value: 'leo' },
+				{ label: 'Rex (M)', value: 'rex' },
+				{ label: 'Sal (M)', value: 'sal' },
+			],
+			default: 'eve',
+		},
+		{
+			id: 'language',
+			label: 'Language',
+			type: 'select',
+			options: [
+				{ label: 'Auto', value: 'auto' },
+				{ label: 'English', value: 'en' },
+				{ label: 'Chinese', value: 'zh' },
+				{ label: 'Spanish', value: 'es' },
+				{ label: 'German', value: 'de' },
+				{ label: 'French', value: 'fr' },
+				{ label: 'Japanese', value: 'ja' },
+				{ label: 'Korean', value: 'ko' },
+				{ label: 'Portuguese (BR)', value: 'pt-BR' },
+			],
+			default: 'auto',
+		},
+	],
+}
+
 // ── Music Models ──
 
 export const elevenLabsMusic: ModelConfig = {

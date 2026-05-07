@@ -161,20 +161,33 @@ export class BragiMcpServer {
 				const canvas = requireCanvas(getCanvas)
 				const node = findNode(canvas, id)
 				const d = node.getData() as any
-				if (text !== undefined) {
-					// setText keeps the live node.text property and the canvas data in sync.
-					// For non-text nodes (file/link/group) setText is a no-op in Obsidian, so
-					// fall back to setData which at least persists to canvas JSON.
-					if (d.type === 'text' && typeof node.setText === 'function') {
-						await node.setText(text)
-					} else {
-						node.setData({ ...d, text })
-					}
+
+				// For geometry-only updates, moveAndResize is safe and fast.
+				// For text/color updates we rebuild the node via importData,
+				// because node.setText() and repeated setData() calls from an
+				// external (non-UI) caller can leave Obsidian's canvas in a
+				// broken internal state that unmounts all nodes until reload.
+				const needsRebuild = text !== undefined || color !== undefined
+
+				if (needsRebuild) {
+					const full = canvas.getData() as any
+					const nodes = (full.nodes || []).map((n: any) => {
+						if (n.id !== id) return n
+						const next = { ...n }
+						if (text !== undefined) next.text = text
+						if (color !== undefined) next.color = color
+						if (x !== undefined) next.x = x
+						if (y !== undefined) next.y = y
+						if (width !== undefined) next.width = width
+						if (height !== undefined) next.height = height
+						return next
+					})
+					canvas.importData({ ...full, nodes })
+					canvas.requestSave()
+					return ok()
 				}
-				if (color !== undefined) {
-					const latest = node.getData() as any
-					node.setData({ ...latest, color })
-				}
+
+				// Geometry-only path: moveAndResize keeps live state coherent.
 				const move: any = {}
 				if (x !== undefined) move.x = x
 				if (y !== undefined) move.y = y

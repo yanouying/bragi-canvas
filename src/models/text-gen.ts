@@ -81,3 +81,25 @@ export const claudeSonnet46: ModelConfig = {
 	modes: ['text-to-text'],
 	params: [],
 }
+
+export const grok43: ModelConfig = {
+	id: 'grok-4-3',
+	name: 'Grok 4.3',
+	type: 'text',
+	supportedProviders: {
+		xai: { apiModelId: 'grok-4.3' },
+	},
+	modes: ['text-to-text'],
+	params: [],
+}
+
+export const grok4Fast: ModelConfig = {
+	id: 'grok-4-fast',
+	name: 'Grok 4 Fast',
+	type: 'text',
+	supportedProviders: {
+		xai: { apiModelId: 'grok-4-fast-non-reasoning' },
+	},
+	modes: ['text-to-text'],
+	params: [],
+}

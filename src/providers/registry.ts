@@ -15,6 +15,10 @@ import { ElevenLabsProvider } from './elevenlabs'
 import { MiniMaxProvider } from './minimax'
 import { LegnextProvider } from './legnext'
 import { APIMartProvider } from './apimart'
+import { LumaProvider } from './luma'
+import { XAIImageProvider, XAIVideoProvider, XAIAudioProvider } from './xai'
+
+const LUMA_ENDPOINT = 'https://luma.bragi.now'
 import { OpenAITextProvider, GeminiTextProvider, AnthropicTextProvider, BedrockClaudeTextProvider } from './text-gen'
 import { requestUrl } from 'obsidian'
 
@@ -366,6 +370,63 @@ export const PROVIDERS: ProviderSpec[] = [
 		makeImage: ({ settings, app, outputDir }) =>
 			new APIMartProvider(settings.providers.apimart, app, outputDir),
 		testConnection: (d) => testListModels('https://api.apimart.ai/v1/models', d.apimart || ''),
+	},
+	{
+		id: 'xai',
+		name: 'xAI',
+		description: 'Grok text, image, video, and TTS.',
+		docUrl: 'https://console.x.ai',
+		fields: [{ key: 'xai', label: 'API Key', placeholder: 'xai-...', type: 'password' }],
+		isConfigured: (s) => !!s.providers.xai,
+		makeImage: ({ settings, app, outputDir }) =>
+			new XAIImageProvider(settings.providers.xai, app, outputDir),
+		makeVideo: ({ settings, app, outputDir }) =>
+			new XAIVideoProvider(settings.providers.xai, app, outputDir),
+		makeText: ({ settings }) =>
+			new OpenAITextProvider(settings.providers.xai, 'https://api.x.ai/v1'),
+		makeAudio: ({ settings, app, outputDir }) =>
+			new XAIAudioProvider(settings.providers.xai, app, outputDir),
+		testConnection: (d) => testListModels('https://api.x.ai/v1/models', d.xai || ''),
+	},
+	{
+		id: 'luma',
+		name: 'Luma',
+		description: 'Luma Uni-1 image generation.',
+		fields: [
+			{ key: 'lumaToken', label: 'API Key', placeholder: 'API Key', type: 'password' },
+		],
+		isConfigured: (s) => !!s.providers.lumaToken,
+		makeImage: ({ settings, app, outputDir }) =>
+			new LumaProvider(LUMA_ENDPOINT, settings.providers.lumaToken, app, outputDir),
+		testConnection: async (d) => {
+			const endpoint = LUMA_ENDPOINT
+			const token = d.lumaToken || ''
+			if (!token) return { ok: false, message: 'API key is empty.' }
+			try {
+				// POST with empty body: 401 = bad token, 400 = token OK but missing prompt.
+				const authResp = await requestUrl({
+					url: `${endpoint}/v1/images/generate`,
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'Authorization': `Bearer ${token}`,
+					},
+					body: '{}',
+					throw: false,
+				})
+				if (authResp.status === 401) return { ok: false, message: 'Invalid API key.' }
+				if (authResp.status !== 400 && authResp.status !== 200) {
+					return { ok: false, message: `Unexpected status ${authResp.status}.` }
+				}
+				// Auth passed — now check upstream account health.
+				const healthResp = await requestUrl({ url: `${endpoint}/health`, method: 'GET', throw: false })
+				const healthy = healthResp.json?.accounts?.healthy ?? 0
+				if (healthy > 0) return { ok: true, message: `Connected. ${healthy} account(s) healthy.` }
+				return { ok: false, message: 'Token OK but no healthy Luma accounts upstream.' }
+			} catch (err: any) {
+				return { ok: false, message: `Network error: ${err?.message || err}` }
+			}
+		},
 	},
 ]
 
