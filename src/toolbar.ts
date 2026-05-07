@@ -37,7 +37,7 @@ async function downloadMediaFile(vaultPath: string, node: CanvasNode): Promise<v
 		try {
 			const app = node.app
 			const resourcePath = app.vault.adapter.getResourcePath(vaultPath)
-			const a = activeDocument.createEl('a')
+			const a = createEl('a')
 			a.href = resourcePath
 			a.download = vaultPath.split('/').pop() || 'download'
 			activeDocument.body.appendChild(a)
@@ -196,7 +196,7 @@ function openBragiMoreDropdown(moreBtn: HTMLElement, menuEl: HTMLElement): void 
 
 	const btnRect = moreBtn.getBoundingClientRect()
 	const toolbarRect = menuEl.getBoundingClientRect()
-	const dropdown = activeDocument.createDiv()
+	const dropdown = createDiv()
 	dropdown.className = 'bragi-more-dropdown'
 	dropdown.style.left = `${btnRect.left}px`
 	dropdown.style.top = `${toolbarRect.bottom - 1}px`
@@ -275,7 +275,7 @@ export function patchCanvasMenu(
 				for (const { btn } of collapsed) btn.classList.add('bragi-hidden')
 
 				if (collapsed.length > 0 && !menuEl.querySelector('.bragi-more')) {
-					const moreBtn = activeDocument.createDiv()
+					const moreBtn = createDiv()
 					moreBtn.className = 'clickable-icon bragi-more'
 					setIcon(moreBtn, 'bragi-more')
 					setTooltip(moreBtn, 'More', { placement: 'top' })
@@ -296,7 +296,7 @@ export function patchCanvasMenu(
 			if (selSize >= 1 && !menuEl.querySelector('.bragi-pin')) {
 				const colorBtn = findBuiltinByLabel(menuEl, 'colo')
 				if (colorBtn) {
-					const pinBtn = activeDocument.createDiv()
+					const pinBtn = createDiv()
 					pinBtn.className = 'clickable-icon bragi-pin'
 					setIcon(pinBtn, 'bragi-pin')
 					setTooltip(pinBtn, 'Mark', { placement: 'top' })
@@ -322,7 +322,7 @@ export function patchCanvasMenu(
 					const pinBtn = menuEl.querySelector('.bragi-pin')
 					const anchor = pinBtn || findBuiltinByLabel(menuEl, 'colo')
 					if (anchor) {
-						const panoBtn = activeDocument.createDiv()
+						const panoBtn = createDiv()
 						panoBtn.className = 'clickable-icon bragi-pano'
 						setIcon(panoBtn, 'bragi-360')
 						setTooltip(panoBtn, '360° viewer', { placement: 'top' })
@@ -345,7 +345,7 @@ export function patchCanvasMenu(
 					const pinBtn = menuEl.querySelector('.bragi-pin')
 					const anchor = panoBtn || pinBtn || findBuiltinByLabel(menuEl, 'colo')
 					if (anchor) {
-						const splitBtn = activeDocument.createDiv()
+						const splitBtn = createDiv()
 						splitBtn.className = 'clickable-icon bragi-split'
 						setIcon(splitBtn, 'bragi-split')
 						setTooltip(splitBtn, 'Split grid', { placement: 'top' })
@@ -604,7 +604,7 @@ export function replaceCanvasCardMenuIcons(containerEl: HTMLElement, app?: App, 
 	if (menu.querySelector('.bragi-card-separator')) return // already injected
 
 	const makeBtn = (iconName: string, tooltip: string, onClick: () => void): HTMLElement => {
-		const btn = activeDocument.createDiv()
+		const btn = createDiv()
 		btn.className = 'canvas-card-menu-button bragi-card-extra'
 		setIcon(btn, iconName)
 		setTooltip(btn, tooltip, { placement: 'top' })
@@ -616,7 +616,7 @@ export function replaceCanvasCardMenuIcons(containerEl: HTMLElement, app?: App, 
 		return btn
 	}
 
-	const sep = activeDocument.createDiv()
+	const sep = createDiv()
 	sep.className = 'bragi-card-separator'
 	menu.appendChild(sep)
 

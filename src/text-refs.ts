@@ -143,33 +143,33 @@ export function updateTextRefStrip(canvas: Canvas, node: CanvasNode, app: App): 
 
 	existing?.remove()
 
-	const strip = activeDocument.createDiv()
+	const strip = createDiv()
 	strip.className = STRIP_CLASS
 	strip.setAttribute('data-fingerprint', fingerprint)
 
 	for (let i = 0; i < refs.length; i++) {
 		const ref = refs[i]
-		const row = activeDocument.createDiv()
+		const row = createDiv()
 		row.className = 'bragi-text-ref-row'
 		row.setAttribute('data-ref-id', ref.nodeId)
 		row.draggable = true
 
-		const leading = activeDocument.createDiv()
+		const leading = createDiv()
 		leading.className = 'bragi-ref-leading'
 
-		const handle = activeDocument.createSpan()
+		const handle = createSpan()
 		handle.className = 'bragi-text-ref-handle'
 		handle.textContent = '⠿'
 		leading.appendChild(handle)
 
-		const badge = activeDocument.createSpan()
+		const badge = createSpan()
 		badge.className = 'bragi-ref-badge bragi-ref-badge-inline'
 		badge.textContent = String(i + 1)
 		leading.appendChild(badge)
 
 		row.appendChild(leading)
 
-		const preview = activeDocument.createSpan()
+		const preview = createSpan()
 		preview.className = 'bragi-text-ref-preview'
 		preview.textContent = ref.preview
 		preview.title = ref.preview

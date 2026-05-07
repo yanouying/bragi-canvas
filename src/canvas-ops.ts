@@ -174,7 +174,7 @@ function attachGeneratingOverlay(node: CanvasNode, modelName: string, startedAt:
 	if (!nodeEl) return
 	let overlayEl = nodeEl.querySelector<HTMLDivElement>('.bragi-generating-overlay')
 	if (!overlayEl) {
-		overlayEl = activeDocument.createDiv()
+		overlayEl = createDiv()
 		overlayEl.className = 'bragi-generating-overlay'
 		nodeEl.appendChild(overlayEl)
 	}

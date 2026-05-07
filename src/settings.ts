@@ -31,7 +31,7 @@ function autoSizeSelect(select: HTMLSelectElement): void {
 function createProviderDesc(hint: string, linkText: string, url: string): DocumentFragment {
 	const frag = activeDocument.createFragment()
 	frag.appendText(`Paste your API key (${hint}). `)
-	const a = activeDocument.createEl('a')
+	const a = createEl('a')
 	a.href = url
 	a.textContent = linkText
 	a.addEventListener('click', (e) => {

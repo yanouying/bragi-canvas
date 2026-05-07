@@ -122,43 +122,43 @@ export function showGenerateBar(
 
 	// ── Create all DOM elements first ──
 
-	const bar = activeDocument.createDiv()
+	const bar = createDiv()
 	bar.className = 'bragi-generate-bar'
 	activeBar = bar
 	bar.addEventListener('pointerdown', (e) => e.stopPropagation())
 	bar.addEventListener('click', (e) => e.stopPropagation())
 
 	// Left group: model + mode selectors
-	const leftGroup = activeDocument.createDiv()
+	const leftGroup = createDiv()
 	leftGroup.className = 'bragi-bar-left'
 	bar.appendChild(leftGroup)
 
 	// Model selector
-	const modelSelect = activeDocument.createEl('select')
+	const modelSelect = createEl('select')
 	modelSelect.className = 'bragi-bar-select'
 	leftGroup.appendChild(modelSelect)
 
 	// Mode selector (for video models with multiple modes)
-	const modeSelect = activeDocument.createEl('select')
+	const modeSelect = createEl('select')
 	modeSelect.className = 'bragi-bar-select'
 	leftGroup.appendChild(modeSelect)
 
 	// Right group: params + batch + run
-	const rightGroup = activeDocument.createDiv()
+	const rightGroup = createDiv()
 	rightGroup.className = 'bragi-bar-right'
 	bar.appendChild(rightGroup)
 
 	// Params container
-	const paramsEl = activeDocument.createDiv()
+	const paramsEl = createDiv()
 	paramsEl.className = 'bragi-bar-params'
 	rightGroup.appendChild(paramsEl)
 
 	// Batch count selector
-	const batchSelect = activeDocument.createEl('select')
+	const batchSelect = createEl('select')
 	batchSelect.className = 'bragi-bar-select'
 	batchSelect.title = 'Count'
 	for (const n of [1, 2, 3, 4]) {
-		const opt = activeDocument.createEl('option')
+		const opt = createEl('option')
 		opt.value = String(n)
 		opt.textContent = `x${n}`
 		batchSelect.appendChild(opt)
@@ -167,7 +167,7 @@ export function showGenerateBar(
 	rightGroup.appendChild(batchSelect)
 
 	// Run button
-	const runBtn = activeDocument.createEl('button')
+	const runBtn = createEl('button')
 	runBtn.className = 'bragi-bar-run'
 	runBtn.textContent = 'Run'
 	rightGroup.appendChild(runBtn)
@@ -199,7 +199,7 @@ export function showGenerateBar(
 		const inferred = inferMode(selectedModel.modes, upstreamImageCount, upstreamVideoCount)
 
 		for (const mode of selectedModel.modes) {
-			const opt = activeDocument.createEl('option')
+			const opt = createEl('option')
 			opt.value = mode
 			opt.textContent = MODE_LABELS[mode] || mode
 			modeSelect.appendChild(opt)
@@ -237,11 +237,11 @@ export function showGenerateBar(
 				const valid = effectiveOptions.some(o => o.value === currentValue)
 				if (!valid) paramValues[param.id] = param.default
 
-				const select = activeDocument.createEl('select')
+				const select = createEl('select')
 				select.className = 'bragi-bar-select'
 				select.title = param.label
 				for (const opt of effectiveOptions) {
-					const optEl = activeDocument.createEl('option')
+					const optEl = createEl('option')
 					optEl.value = opt.value
 					optEl.textContent = opt.label
 					select.appendChild(optEl)
@@ -254,10 +254,10 @@ export function showGenerateBar(
 				paramsEl.appendChild(select)
 				autoSizeSelect(select)
 			} else if (param.type === 'range') {
-				const wrapper = activeDocument.createDiv()
+				const wrapper = createDiv()
 				wrapper.className = 'bragi-bar-range'
 
-				const range = activeDocument.createEl('input')
+				const range = createEl('input')
 				range.type = 'range'
 				range.min = String(param.min ?? 0)
 				range.max = String(param.max ?? 100)
@@ -265,7 +265,7 @@ export function showGenerateBar(
 				range.value = String(paramValues[param.id] ?? param.default)
 				range.title = param.label
 
-				const valueLabel = activeDocument.createSpan()
+				const valueLabel = createSpan()
 				valueLabel.className = 'bragi-bar-range-value'
 				valueLabel.textContent = `${range.value}${param.unit || ''}`
 
@@ -307,7 +307,7 @@ export function showGenerateBar(
 		models = getModelsForType(currentType)
 
 		if (models.length === 0) {
-			const opt = activeDocument.createEl('option')
+			const opt = createEl('option')
 			opt.textContent = 'No models'
 			opt.disabled = true
 			modelSelect.appendChild(opt)
@@ -315,7 +315,7 @@ export function showGenerateBar(
 		} else {
 			let firstCompatible: ModelConfig | null = null
 			for (const m of models) {
-				const opt = activeDocument.createEl('option')
+				const opt = createEl('option')
 				opt.value = m.id
 				const compatible = modelSupportsInputs(m)
 				if (!compatible) {
@@ -577,37 +577,37 @@ export function showBatchGenerateBar(
 	let selectedModel: ModelConfig | null = models[0] || null
 	let paramValues: Record<string, string | number> = {}
 
-	const bar = activeDocument.createDiv()
+	const bar = createDiv()
 	bar.className = 'bragi-generate-bar'
 	activeBar = bar
 	bar.addEventListener('pointerdown', (e) => e.stopPropagation())
 	bar.addEventListener('click', (e) => e.stopPropagation())
 
-	const leftGroup = activeDocument.createDiv()
+	const leftGroup = createDiv()
 	leftGroup.className = 'bragi-bar-left'
 	bar.appendChild(leftGroup)
 
-	const modelSelect = activeDocument.createEl('select')
+	const modelSelect = createEl('select')
 	modelSelect.className = 'bragi-bar-select'
 	leftGroup.appendChild(modelSelect)
 
-	const modeSelect = activeDocument.createEl('select')
+	const modeSelect = createEl('select')
 	modeSelect.className = 'bragi-bar-select'
 	leftGroup.appendChild(modeSelect)
 
-	const rightGroup = activeDocument.createDiv()
+	const rightGroup = createDiv()
 	rightGroup.className = 'bragi-bar-right'
 	bar.appendChild(rightGroup)
 
-	const paramsEl = activeDocument.createDiv()
+	const paramsEl = createDiv()
 	paramsEl.className = 'bragi-bar-params'
 	rightGroup.appendChild(paramsEl)
 
-	const batchSelect = activeDocument.createEl('select')
+	const batchSelect = createEl('select')
 	batchSelect.className = 'bragi-bar-select'
 	batchSelect.title = 'Count'
 	for (const n of [1, 2, 3, 4]) {
-		const opt = activeDocument.createEl('option')
+		const opt = createEl('option')
 		opt.value = String(n)
 		opt.textContent = `x${n}`
 		batchSelect.appendChild(opt)
@@ -615,7 +615,7 @@ export function showBatchGenerateBar(
 	batchSelect.value = '1'
 	rightGroup.appendChild(batchSelect)
 
-	const runBtn = activeDocument.createEl('button')
+	const runBtn = createEl('button')
 	runBtn.className = 'bragi-bar-run'
 	runBtn.textContent = `Run (${nodes.length})`
 	rightGroup.appendChild(runBtn)
@@ -631,7 +631,7 @@ export function showBatchGenerateBar(
 		}
 		modeSelect.classList.remove('bragi-hidden')
 		for (const mode of selectedModel.modes) {
-			const opt = activeDocument.createEl('option')
+			const opt = createEl('option')
 			opt.value = mode
 			opt.textContent = MODE_LABELS[mode] || mode
 			modeSelect.appendChild(opt)
@@ -658,11 +658,11 @@ export function showBatchGenerateBar(
 				const currentValue = String(paramValues[param.id] ?? param.default)
 				if (!effectiveOptions.some(o => o.value === currentValue)) paramValues[param.id] = param.default
 
-				const select = activeDocument.createEl('select')
+				const select = createEl('select')
 				select.className = 'bragi-bar-select'
 				select.title = param.label
 				for (const opt of effectiveOptions) {
-					const optEl = activeDocument.createEl('option')
+					const optEl = createEl('option')
 					optEl.value = opt.value
 					optEl.textContent = opt.label
 					select.appendChild(optEl)
@@ -672,16 +672,16 @@ export function showBatchGenerateBar(
 				paramsEl.appendChild(select)
 				autoSizeSelect(select)
 			} else if (param.type === 'range') {
-				const wrapper = activeDocument.createDiv()
+				const wrapper = createDiv()
 				wrapper.className = 'bragi-bar-range'
-				const range = activeDocument.createEl('input')
+				const range = createEl('input')
 				range.type = 'range'
 				range.min = String(param.min ?? 0)
 				range.max = String(param.max ?? 100)
 				range.step = String(param.step ?? 1)
 				range.value = String(paramValues[param.id] ?? param.default)
 				range.title = param.label
-				const valueLabel = activeDocument.createSpan()
+				const valueLabel = createSpan()
 				valueLabel.className = 'bragi-bar-range-value'
 				valueLabel.textContent = `${range.value}${param.unit || ''}`
 				range.addEventListener('input', () => {
@@ -699,14 +699,14 @@ export function showBatchGenerateBar(
 		modelSelect.innerHTML = ''
 		models = getModelsForType(currentType)
 		if (models.length === 0) {
-			const opt = activeDocument.createEl('option')
+			const opt = createEl('option')
 			opt.textContent = 'No models'
 			opt.disabled = true
 			modelSelect.appendChild(opt)
 			selectedModel = null
 		} else {
 			for (const m of models) {
-				const opt = activeDocument.createEl('option')
+				const opt = createEl('option')
 				opt.value = m.id
 				opt.textContent = m.name
 				modelSelect.appendChild(opt)

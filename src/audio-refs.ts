@@ -80,34 +80,34 @@ export function updateAudioRefStrip(canvas: Canvas, node: CanvasNode, app: App):
 
 	existing?.remove()
 
-	const strip = activeDocument.createDiv()
+	const strip = createDiv()
 	strip.className = STRIP_CLASS
 	strip.setAttribute('data-fingerprint', fingerprint)
 
 	for (let i = 0; i < orderedAudios.length; i++) {
 		const audioPath = orderedAudios[i]
 
-		const wrapper = activeDocument.createDiv()
+		const wrapper = createDiv()
 		wrapper.className = 'bragi-audio-ref-wrapper'
 		wrapper.setAttribute('data-audio-path', audioPath)
 		wrapper.draggable = true
 
-		const leading = activeDocument.createDiv()
+		const leading = createDiv()
 		leading.className = 'bragi-ref-leading'
 
-		const handle = activeDocument.createSpan()
+		const handle = createSpan()
 		handle.className = 'bragi-text-ref-handle'
 		handle.textContent = '⠿'
 		leading.appendChild(handle)
 
-		const badge = activeDocument.createSpan()
+		const badge = createSpan()
 		badge.className = 'bragi-ref-badge bragi-ref-badge-inline'
 		badge.textContent = String(i + 1)
 		leading.appendChild(badge)
 
 		wrapper.appendChild(leading)
 
-		const label = activeDocument.createSpan()
+		const label = createSpan()
 		label.className = 'bragi-audio-ref-label'
 		label.textContent = '...'
 		wrapper.appendChild(label)

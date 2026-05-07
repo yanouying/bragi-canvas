@@ -74,26 +74,26 @@ export function updateRefThumbnails(canvas: Canvas, node: CanvasNode, app: App):
 
 	existing?.remove()
 
-	const strip = activeDocument.createDiv()
+	const strip = createDiv()
 	strip.className = STRIP_CLASS
 	strip.setAttribute('data-fingerprint', fingerprint)
 
 	for (let i = 0; i < orderedImages.length; i++) {
 		const imgPath = orderedImages[i]
 
-		const wrapper = activeDocument.createDiv()
+		const wrapper = createDiv()
 		wrapper.className = 'bragi-ref-thumb-wrapper'
 		wrapper.setAttribute('data-img-path', imgPath)
 		wrapper.draggable = true
 
-		const img = activeDocument.createEl('img')
+		const img = createEl('img')
 		img.className = 'bragi-ref-thumb'
 		img.src = app.vault.adapter.getResourcePath(imgPath)
 		img.title = `#${i + 1} — ${imgPath.split('/').pop() || imgPath}`
 		img.draggable = false // prevent native img drag
 		wrapper.appendChild(img)
 
-		const badge = activeDocument.createDiv()
+		const badge = createDiv()
 		badge.className = 'bragi-ref-badge'
 		badge.textContent = String(i + 1)
 		wrapper.appendChild(badge)
@@ -103,7 +103,7 @@ export function updateRefThumbnails(canvas: Canvas, node: CanvasNode, app: App):
 		const assetId = sourceImageNode ? (sourceImageNode.getData() as unknown).bragiAssetId : null
 
 		if (assetId) {
-			const assetDot = activeDocument.createDiv()
+			const assetDot = createDiv()
 			assetDot.className = 'bragi-asset-dot'
 			assetDot.title = `Asset: ${assetId}`
 			wrapper.appendChild(assetDot)

@@ -8,7 +8,7 @@ let pannellumLoaded = false
 function loadPannellum(): void {
 	if (pannellumLoaded) return
 	pannellumLoaded = true
-	const script = activeDocument.createEl('script')
+	const script = createEl('script')
 	script.textContent = pannellumJs
 	activeDocument.head.appendChild(script)
 }
@@ -195,7 +195,7 @@ export class PanoramaViewerModal extends Modal {
 			i.onerror = () => reject(new Error('mirror: image load failed'))
 			i.src = srcUrl
 		})
-		const c = activeDocument.createEl('canvas')
+		const c = createEl('canvas')
 		c.width = img.naturalWidth
 		c.height = img.naturalHeight
 		const ctx = c.getContext('2d')!
@@ -225,7 +225,7 @@ export class PanoramaViewerModal extends Modal {
 
 		const url = this.mirrored && this.mirroredUrl ? this.mirroredUrl : this.originalUrl!
 
-		const offscreen = activeDocument.createDiv()
+		const offscreen = createDiv()
 		offscreen.classList.add('bragi-pano-offscreen-shot')
 		activeDocument.body.appendChild(offscreen)
 

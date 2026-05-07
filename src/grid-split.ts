@@ -158,7 +158,7 @@ export async function splitGrid(img: HTMLImageElement, detection: GridDetectionR
 
 /** Draw image to a canvas at the given size, optionally apply a 3x3 Gaussian blur, return grayscale Uint8Array. */
 function rasterizeToGray(img: HTMLImageElement, w: number, h: number, blur: boolean): Uint8Array {
-	const canvas = activeDocument.createEl('canvas')
+	const canvas = createEl('canvas')
 	canvas.width = w
 	canvas.height = h
 	const ctx = canvas.getContext('2d', { willReadFrequently: true })!
@@ -470,7 +470,7 @@ async function extractAndTrimTile(
 	targetWidth: number, targetHeight: number,
 	trimEdges: TrimEdges,
 ): Promise<{ blob: Blob }> {
-	const tempCanvas = activeDocument.createEl('canvas')
+	const tempCanvas = createEl('canvas')
 	tempCanvas.width = srcWidth
 	tempCanvas.height = srcHeight
 	const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true })!
@@ -548,7 +548,7 @@ async function extractNormalizedTile(
 	srcX: number, srcY: number, srcWidth: number, srcHeight: number,
 	targetWidth: number, targetHeight: number,
 ): Promise<{ blob: Blob }> {
-	const canvas = activeDocument.createEl('canvas')
+	const canvas = createEl('canvas')
 	canvas.width = targetWidth
 	canvas.height = targetHeight
 	const ctx = canvas.getContext('2d')!
