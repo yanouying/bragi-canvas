@@ -1,5 +1,5 @@
-/* eslint-disable obsidianmd/ui/sentence-case, obsidianmd/prefer-get-language -- Bragi preserves exact copy; getLanguage requires Obsidian 1.8.7 but minAppVersion is 1.5.0. */
-import { App, Modal } from 'obsidian'
+/* eslint-disable obsidianmd/ui/sentence-case -- Bragi preserves exact copy. */
+import { App, Modal, getLanguage } from 'obsidian'
 
 /**
  * Bragi Canvas relies on Obsidian's built-in English aria-labels for many of
@@ -10,7 +10,7 @@ import { App, Modal } from 'obsidian'
  * Returns true iff the user is running English / English (GB).
  */
 export function isSupportedLanguage(): boolean {
-	const lang = window.localStorage.getItem('language') || ''
+	const lang = getLanguage() || ''
 	return lang === '' || lang === 'en' || lang === 'en-GB'
 }
 
