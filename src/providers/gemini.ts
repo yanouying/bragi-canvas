@@ -1,6 +1,14 @@
 import type { ImageProvider, GenerateImageResult } from './types'
 import type { App } from 'obsidian'
 import { requestUrl } from 'obsidian'
+import { stringParam } from './params'
+import { throwForGoogleError } from './google-errors'
+
+interface GeminiInlineData {
+	data?: string
+	mimeType?: string
+	mime_type?: string
+}
 
 export class GeminiProvider implements ImageProvider {
 	name = 'Gemini'
@@ -14,17 +22,18 @@ export class GeminiProvider implements ImageProvider {
 		this.outputDir = outputDir
 	}
 
-	async generateImage(prompt: string, params?: Record<string, any>): Promise<GenerateImageResult> {
-		const modelId = params?.modelId || 'gemini-3-pro-image-preview'
+	async generateImage(prompt: string, params?: Record<string, unknown>): Promise<GenerateImageResult> {
+		const modelId = stringParam(params?.modelId, 'gemini-3-pro-image-preview')
 		const aspectRatio = params?.aspectRatio || '1:1'
 		const imageSize = params?.imageSize || '1K'
-		const refImages: string[] = params?.refImages || []
+		const refImages = Array.isArray(params?.refImages) ? params.refImages : []
 
 		const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent`
 
 		// Build parts: reference images first, then prompt text
-		const parts: any[] = []
+		const parts: unknown[] = []
 		for (const dataUri of refImages) {
+			if (typeof dataUri !== 'string') continue
 			const match = dataUri.match(/^data:([^;]+);base64,(.+)$/)
 			if (match) {
 				parts.push({
@@ -44,6 +53,7 @@ export class GeminiProvider implements ImageProvider {
 				'Content-Type': 'application/json',
 				'x-goog-api-key': this.apiKey,
 			},
+			throw: false,
 			body: JSON.stringify({
 				contents: [{
 					parts,
@@ -59,18 +69,22 @@ export class GeminiProvider implements ImageProvider {
 		})
 
 		const data = response.json
+		throwForGoogleError('Gemini', response)
 
 		// Find the image part in the response
 		const candidates = data.candidates || []
 		let imageBase64: string | null = null
 		let mimeType = 'image/png'
+		let finishReason = ''
 
 		for (const candidate of candidates) {
+			finishReason = candidate.finishReason || finishReason
 			const parts = candidate.content?.parts || []
 			for (const part of parts) {
-				if (part.inlineData?.data) {
-					imageBase64 = part.inlineData.data
-					mimeType = part.inlineData.mimeType || 'image/png'
+				const inlineData = getInlineData(part)
+				if (inlineData?.data) {
+					imageBase64 = inlineData.data
+					mimeType = inlineData.mimeType || inlineData.mime_type || 'image/png'
 					break
 				}
 			}
@@ -78,7 +92,8 @@ export class GeminiProvider implements ImageProvider {
 		}
 
 		if (!imageBase64) {
-			throw new Error('No image generated in Gemini response')
+			const suffix = finishReason ? ` (finishReason: ${finishReason})` : ''
+			throw new Error(`No image generated in Gemini response${suffix}`)
 		}
 
 		// Save image to vault
@@ -99,4 +114,14 @@ export class GeminiProvider implements ImageProvider {
 
 		return { filePath }
 	}
+}
+
+function getInlineData(part: Record<string, unknown>): GeminiInlineData | null {
+	const inlineData = part.inlineData || part.inline_data
+	if (!isGeminiInlineData(inlineData)) return null
+	return inlineData
+}
+
+function isGeminiInlineData(value: unknown): value is GeminiInlineData {
+	return typeof value === 'object' && value !== null
 }

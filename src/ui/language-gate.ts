@@ -1,4 +1,5 @@
-import { App, Modal } from 'obsidian'
+/* eslint-disable obsidianmd/ui/sentence-case -- Bragi preserves exact copy. */
+import { App, Modal, getLanguage } from 'obsidian'
 
 /**
  * Bragi Canvas relies on Obsidian's built-in English aria-labels for many of
@@ -9,7 +10,7 @@ import { App, Modal } from 'obsidian'
  * Returns true iff the user is running English / English (GB).
  */
 export function isSupportedLanguage(): boolean {
-	const lang = window.localStorage.getItem('language') || ''
+	const lang = getLanguage() || ''
 	return lang === '' || lang === 'en' || lang === 'en-GB'
 }
 
@@ -30,13 +31,15 @@ export class LanguageGateModal extends Modal {
 		const row = contentEl.createDiv({ cls: 'modal-button-container' })
 
 		const disable = row.createEl('button', { text: 'Disable plugin' })
-		disable.addEventListener('click', async () => {
-			try {
-				await (this.app as any).plugins.disablePlugin(this.pluginId)
-			} catch (err) {
-				console.error('Bragi: failed to disable plugin', err)
-			}
-			this.close()
+		disable.addEventListener('click', () => {
+			void (async () => {
+				try {
+					await (this.app as unknown).plugins.disablePlugin(this.pluginId)
+				} catch (err) {
+					console.error('Bragi: failed to disable plugin', err)
+				}
+				this.close()
+			})()
 		})
 
 		const switchBtn = row.createEl('button', { text: 'Switch to English & restart', cls: 'mod-cta' })
@@ -48,8 +51,8 @@ export class LanguageGateModal extends Modal {
 			}
 			// Relaunch Obsidian via Electron
 			try {
-				const remote = (window as any).require?.('@electron/remote')
-					?? (window as any).require?.('electron')?.remote
+				const remote = (window as unknown).require?.('@electron/remote')
+					?? (window as unknown).require?.('electron')?.remote
 				if (remote?.app) {
 					remote.app.relaunch()
 					remote.app.exit(0)
