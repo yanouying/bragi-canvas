@@ -393,7 +393,6 @@ export function patchCanvasMenu(
 	onBatchGenerate?: (type: 'image' | 'video' | 'text' | 'audio', nodes: CanvasNode[]) => void,
 	onPanorama?: (node: CanvasNode) => void,
 	onGridSplit?: (node: CanvasNode) => void,
-	onAssetId?: (node: CanvasNode) => void,
 ): void {
 	if (menuUninstaller) return
 
@@ -493,15 +492,17 @@ export function patchCanvasMenu(
 			}
 
 			if (isEdgeMenu) {
+				const editLabelBtn = findBuiltinByLabel(menuEl, 'edit label')
 				const lineDirectionBtn = findBuiltinByLabel(menuEl, 'line direction') || findBuiltinByLabel(menuEl, 'arrow')
 				const markBtn = createMarkButton(menuEl, canvas, selectedNodes)
+				configureStandardMoreItems(menuEl, 0)
+				addMoreButton(menuEl)
+				const moreBtn = menuEl.querySelector<HTMLElement>('.bragi-more')
 				reorderMenuButtons(menuEl, [
+					editLabelBtn,
 					lineDirectionBtn,
 					markBtn,
-					findFocusButton(menuEl),
-					findColorButton(menuEl),
-					findDeleteButton(menuEl),
-					findBuiltinByLabel(menuEl, 'edit label'),
+					moreBtn,
 				])
 				next.call(this)
 				return result
@@ -525,17 +526,7 @@ export function patchCanvasMenu(
 					void downloadMediaFile(filePath, selectedNode)
 				})
 				menuEl.appendChild(downloadBtn)
-				if (onAssetId) {
-					const currentAssetId = nodeData?.bragiAssetId || ''
-					const assetBtn = createMenuButton(`bragi-asset-btn ${currentAssetId ? 'has-asset' : ''}`, 'link', currentAssetId ? 'Asset ID bound' : 'Set asset ID', () => {
-						onAssetId(selectedNode)
-					})
-					setMoreItem(assetBtn, 'Set asset ID', 'link', 0)
-					menuEl.appendChild(assetBtn)
-					configureStandardMoreItems(menuEl, 1)
-				} else {
-					configureStandardMoreItems(menuEl, 0)
-				}
+				configureStandardMoreItems(menuEl, 0)
 				addMoreButton(menuEl)
 				next.call(this)
 				return result
