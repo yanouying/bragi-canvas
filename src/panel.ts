@@ -109,7 +109,7 @@ export function showGenerateBar(
 
 	const allEnabled = [...getModelsForType('image'), ...getModelsForType('video'), ...getModelsForType('text')]
 	if (allEnabled.length === 0) {
-		new Notice('Bragi canvas: No models available. Configure API keys in settings.')
+		new Notice('Bragi canvas: no models available. Configure API keys in settings.')
 		return
 	}
 
@@ -432,11 +432,11 @@ export function showGenerateBar(
 			}
 
 			if (!prompt) {
-				new Notice('Bragi canvas: No prompt found in this node')
+				new Notice('Bragi canvas: no prompt found in this node')
 				return
 			}
 			if (!selectedModel) {
-				new Notice('Bragi canvas: No model selected')
+				new Notice('Bragi canvas: no model selected')
 				return
 			}
 			hideGenerateBar()
@@ -567,7 +567,7 @@ export function showBatchGenerateBar(
 
 	const allEnabled = [...getModelsForType('image'), ...getModelsForType('video'), ...getModelsForType('text')]
 	if (allEnabled.length === 0) {
-		new Notice('Bragi canvas: No models available. Configure API keys in settings.')
+		new Notice('Bragi canvas: no models available. Configure API keys in settings.')
 		return
 	}
 
@@ -738,7 +738,7 @@ export function showBatchGenerateBar(
 		e.stopPropagation()
 		e.preventDefault()
 		if (!selectedModel) {
-			new Notice('Bragi canvas: No model selected')
+			new Notice('Bragi canvas: no model selected')
 			return
 		}
 		hideGenerateBar()

@@ -548,7 +548,7 @@ export default class BragiCanvas extends Plugin {
 	async handleSTT(node: CanvasNode) {
 		const falKey = this.settings.providers.fal
 		if (!falKey) {
-			new Notice('Add your fal.ai key in Settings → Bragi Canvas to use this')
+			new Notice('Add your fal.ai key in settings to use this')
 			return
 		}
 
@@ -621,7 +621,7 @@ export default class BragiCanvas extends Plugin {
 	async handleAudioIsolation(node: CanvasNode) {
 		const falKey = this.settings.providers.fal
 		if (!falKey) {
-			new Notice('Add your fal.ai key in Settings → Bragi Canvas to use this')
+			new Notice('Add your fal.ai key in settings to use this')
 			return
 		}
 

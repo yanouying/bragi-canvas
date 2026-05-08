@@ -184,7 +184,7 @@ export class BragiSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Enable mcp server')
-			.setDesc('Expose canvas operations to Claude code via mcp protocol')
+			.setDesc('Allow clients to control canvas operations through the mcp protocol')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.mcpEnabled)
 				.onChange((v) => {
