@@ -64,6 +64,7 @@ const ICON_REPLACEMENTS: Record<string, string> = {
 	'fit': 'bragi-focus',
 	'edit': 'bragi-edit',
 	'bragi-edit': 'bragi-edit',
+	'pencil': 'bragi-edit',
 	'group': 'bragi-group',
 	'align': 'bragi-align',
 }
@@ -82,10 +83,83 @@ function findBuiltinByLabel(menuEl: HTMLElement, keyword: string): HTMLElement |
 	for (const el of Array.from(btns)) {
 		const cls = el.className
 		if (cls.includes('bragi-')) continue
-		const label = (el.getAttribute('aria-label') || '').toLowerCase()
+		const label = getButtonLabel(el as HTMLElement)
 		if (label.includes(kw)) return el as HTMLElement
 	}
 	return null
+}
+
+type MoreDropdownItem = {
+	label: string
+	icon: string
+	btn: HTMLElement
+}
+
+function getButtonLabel(el: HTMLElement): string {
+	return [
+		el.getAttribute('aria-label'),
+		el.getAttribute('data-tooltip'),
+		el.getAttribute('title'),
+		el.ariaLabel,
+		el.textContent,
+	]
+		.filter((value): value is string => Boolean(value))
+		.join(' ')
+		.toLowerCase()
+}
+
+function getNativeMenuButtons(menuEl: HTMLElement): HTMLElement[] {
+	return Array.from(menuEl.querySelectorAll('.clickable-icon'))
+		.filter((el): el is HTMLElement => el.instanceOf(HTMLElement))
+		.filter(el => !el.className.includes('bragi-'))
+}
+
+function insertMenuButton(menuEl: HTMLElement, button: HTMLElement, anchor?: Element | null): void {
+	if (anchor?.parentElement) {
+		anchor.parentElement.insertBefore(button, anchor)
+		return
+	}
+	menuEl.appendChild(button)
+}
+
+function getKnownMoreItems(menuEl: HTMLElement): MoreDropdownItem[] {
+	return [
+		{ label: 'Edit', icon: 'bragi-edit', btn: findBuiltinByLabel(menuEl, 'edit') || findBuiltinByLabel(menuEl, 'pencil') },
+		{ label: 'Set colour', icon: 'bragi-color', btn: findBuiltinByLabel(menuEl, 'colo') },
+		{ label: 'Zoom to fit', icon: 'bragi-focus', btn: findBuiltinByLabel(menuEl, 'zoom') || findBuiltinByLabel(menuEl, 'focus') || findBuiltinByLabel(menuEl, 'fit') },
+		{ label: 'Delete', icon: 'bragi-delete', btn: findBuiltinByLabel(menuEl, 'delete') || findBuiltinByLabel(menuEl, 'remove') || findBuiltinByLabel(menuEl, 'trash') },
+	].filter((item): item is MoreDropdownItem => Boolean(item.btn))
+}
+
+function getFallbackMoreItems(menuEl: HTMLElement): MoreDropdownItem[] {
+	const nativeItems = getNativeMenuButtons(menuEl)
+		.filter(btn => !btn.classList.contains('bragi-hidden'))
+		.slice(-3)
+		.map((btn, index) => ({
+			label: btn.getAttribute('aria-label') || btn.getAttribute('title') || `Action ${index + 1}`,
+			icon: 'bragi-more',
+			btn,
+		}))
+
+	if (nativeItems.length > 0) return nativeItems
+
+	return Array.from(menuEl.querySelectorAll('.bragi-duplicate, .bragi-asset-btn, .bragi-download'))
+		.filter((el): el is HTMLElement => el.instanceOf(HTMLElement))
+		.map((btn, index) => ({
+			label: btn.getAttribute('aria-label') || btn.getAttribute('title') || `Action ${index + 1}`,
+			icon: btn.classList.contains('bragi-download')
+				? 'bragi-download'
+				: btn.classList.contains('bragi-duplicate')
+					? 'bragi-duplicate'
+					: 'link',
+			btn,
+		}))
+}
+
+function getMoreItems(menuEl: HTMLElement): { items: MoreDropdownItem[]; shouldHide: boolean } {
+	const known = getKnownMoreItems(menuEl)
+	if (known.length > 0) return { items: known, shouldHide: true }
+	return { items: getFallbackMoreItems(menuEl), shouldHide: false }
 }
 
 /** Open the built-in align/arrange submenu and click "Arrange in a grid". */
@@ -107,7 +181,7 @@ function triggerArrangeInGrid(alignBtn: HTMLElement): void {
 function replaceBuiltinIcons(menuEl: HTMLElement): void {
 	const icons = menuEl.querySelectorAll('.clickable-icon:not(.bragi-gen-image):not(.bragi-gen-video):not(.bragi-gen-text)')
 	icons.forEach((el) => {
-		const label = (el.getAttribute('aria-label') || '').toLowerCase()
+		const label = getButtonLabel(el as HTMLElement)
 		for (const [keyword, iconName] of Object.entries(ICON_REPLACEMENTS)) {
 			if (label.includes(keyword)) {
 				setIcon(el as HTMLElement, iconName)
@@ -187,12 +261,8 @@ function openBragiMoreDropdown(moreBtn: HTMLElement, menuEl: HTMLElement): void 
 	cancelBragiDropdownClose()
 	if (activeDocument.querySelector('.bragi-more-dropdown')) return
 
-	const items = [
-		{ label: 'Edit', icon: 'bragi-edit', btn: findBuiltinByLabel(menuEl, 'edit') },
-		{ label: 'Set colour', icon: 'bragi-color', btn: findBuiltinByLabel(menuEl, 'colo') },
-		{ label: 'Zoom to fit', icon: 'bragi-focus', btn: findBuiltinByLabel(menuEl, 'zoom') || findBuiltinByLabel(menuEl, 'focus') || findBuiltinByLabel(menuEl, 'fit') },
-		{ label: 'Delete', icon: 'bragi-delete', btn: findBuiltinByLabel(menuEl, 'delete') || findBuiltinByLabel(menuEl, 'remove') },
-	].filter((x) => x.btn) as Array<{ label: string; icon: string; btn: HTMLElement }>
+	const { items } = getMoreItems(menuEl)
+	if (items.length === 0) return
 
 	const btnRect = moreBtn.getBoundingClientRect()
 	const toolbarRect = menuEl.getBoundingClientRect()
@@ -239,6 +309,7 @@ export function patchCanvasMenu(
 	onBatchGenerate?: (type: 'image' | 'video' | 'text' | 'audio', nodes: CanvasNode[]) => void,
 	onPanorama?: (node: CanvasNode) => void,
 	onGridSplit?: (node: CanvasNode) => void,
+	onAssetId?: (node: CanvasNode) => void,
 ): void {
 	if (menuUninstaller) return
 
@@ -261,18 +332,12 @@ export function patchCanvasMenu(
 
 			// ── More dropdown — collapse delete / color / focus / edit into ellipsis menu ──
 			if (selSize >= 1) {
-				const deleteBtn = findBuiltinByLabel(menuEl, 'delete') || findBuiltinByLabel(menuEl, 'remove')
-				const colorBtn = findBuiltinByLabel(menuEl, 'colo')
-				const focusBtn = findBuiltinByLabel(menuEl, 'zoom') || findBuiltinByLabel(menuEl, 'focus') || findBuiltinByLabel(menuEl, 'fit')
-				const editBtn = findBuiltinByLabel(menuEl, 'edit')
-				const collapsed: Array<{ label: string; icon: string; btn: HTMLElement }> = []
-				if (editBtn) collapsed.push({ label: 'Edit', icon: 'bragi-edit', btn: editBtn })
-				if (colorBtn) collapsed.push({ label: 'Set colour', icon: 'bragi-color', btn: colorBtn })
-				if (focusBtn) collapsed.push({ label: 'Zoom to fit', icon: 'bragi-focus', btn: focusBtn })
-				if (deleteBtn) collapsed.push({ label: 'Delete', icon: 'bragi-delete', btn: deleteBtn })
+				const { items: collapsed, shouldHide } = getMoreItems(menuEl)
 
 				// Re-hide every render (builtins may be recreated on selection change)
-				for (const { btn } of collapsed) btn.classList.add('bragi-hidden')
+				if (shouldHide) {
+					for (const { btn } of collapsed) btn.classList.add('bragi-hidden')
+				}
 
 				if (collapsed.length > 0 && !menuEl.querySelector('.bragi-more')) {
 					const moreBtn = createDiv()
@@ -281,7 +346,7 @@ export function patchCanvasMenu(
 					setTooltip(moreBtn, 'More', { placement: 'top' })
 
 					const anchor = collapsed[0].btn
-					anchor.parentElement?.insertBefore(moreBtn, anchor)
+					insertMenuButton(menuEl, moreBtn, anchor)
 
 					moreBtn.addEventListener('mouseenter', () => openBragiMoreDropdown(moreBtn, menuEl))
 					moreBtn.addEventListener('mouseleave', () => scheduleBragiDropdownClose())
@@ -295,22 +360,20 @@ export function patchCanvasMenu(
 			// ── Pin (quick purple color) — insert before color palette button ──
 			if (selSize >= 1 && !menuEl.querySelector('.bragi-pin')) {
 				const colorBtn = findBuiltinByLabel(menuEl, 'colo')
-				if (colorBtn) {
-					const pinBtn = createDiv()
-					pinBtn.className = 'clickable-icon bragi-pin'
-					setIcon(pinBtn, 'bragi-pin')
-					setTooltip(pinBtn, 'Mark', { placement: 'top' })
-					pinBtn.addEventListener('click', (e) => {
-						e.stopPropagation()
-						const nodes = Array.from(canvas.selection)
-						for (const n of nodes) {
-							const d = n.getData() as unknown
-							n.setData({ ...d, color: d.color === '6' ? '' : '6' })
-						}
-						void canvas.requestSave()
-					})
-					colorBtn.parentElement?.insertBefore(pinBtn, colorBtn)
-				}
+				const pinBtn = createDiv()
+				pinBtn.className = 'clickable-icon bragi-pin'
+				setIcon(pinBtn, 'bragi-pin')
+				setTooltip(pinBtn, 'Mark', { placement: 'top' })
+				pinBtn.addEventListener('click', (e) => {
+					e.stopPropagation()
+					const nodes = Array.from(canvas.selection)
+					for (const n of nodes) {
+						const d = n.getData() as unknown
+						n.setData({ ...d, color: d.color === '6' ? '' : '6' })
+					}
+					void canvas.requestSave()
+				})
+				insertMenuButton(menuEl, pinBtn, colorBtn)
 			}
 
 			// ── 360° viewer — single image node, insert before Mark (Pin) ──
@@ -330,7 +393,7 @@ export function patchCanvasMenu(
 							e.stopPropagation()
 							onPanorama(only)
 						})
-						anchor.parentElement?.insertBefore(panoBtn, anchor)
+						insertMenuButton(menuEl, panoBtn, anchor)
 					}
 				}
 			}
@@ -353,7 +416,7 @@ export function patchCanvasMenu(
 							e.stopPropagation()
 							onGridSplit(only)
 						})
-						anchor.parentElement?.insertBefore(splitBtn, anchor)
+						insertMenuButton(menuEl, splitBtn, anchor)
 					}
 				}
 			}
@@ -368,15 +431,11 @@ export function patchCanvasMenu(
 				}
 			}
 
-// Only inject Bragi generation/action buttons once
-			if (menuEl.querySelector('.bragi-gen-image') || menuEl.querySelector('.bragi-gen-text') || menuEl.querySelector('.bragi-gen-audio') || menuEl.querySelector('.bragi-stt') || menuEl.querySelector('.bragi-download') || menuEl.querySelector('.bragi-duplicate')) {
-				return result
-			}
-
 			if (!canvas?.selection || selSize === 0) return result
 
 			// ── Multi-select: batch generate buttons ──
 			if (selSize > 1) {
+				if (menuEl.querySelector('.bragi-gen-image, .bragi-gen-video, .bragi-gen-text, .bragi-gen-audio')) return result
 				if (!onBatchGenerate) return result
 				const allNodes = Array.from(canvas.selection)
 				const promptNodes = allNodes.filter(n => {
@@ -437,7 +496,7 @@ export function patchCanvasMenu(
 			if (!isTextNode && !isNoteNode && !isAudioNode && !isMediaNode) return result
 
 			// Duplicate with connections — right after the built-in edit icon
-			if (onDuplicate) {
+			if (onDuplicate && !menuEl.querySelector('.bragi-duplicate')) {
 				const edges = canvas.getEdgesForNode(selectedNode)
 				const hasIncoming = edges?.some(e => e.to.node.id === selectedNode.id)
 				if (hasIncoming) {
@@ -452,40 +511,46 @@ export function patchCanvasMenu(
 			}
 
 			// Separator between duplicate/built-in icons and generation icons
-			menuEl.createDiv({ cls: 'canvas-menu-separator bragi-separator' })
+			if (!menuEl.querySelector('.bragi-actions-separator')) {
+				menuEl.createDiv({ cls: 'canvas-menu-separator bragi-separator bragi-actions-separator' })
+			}
 
 			if (isTextNode || isNoteNode) {
 				// Text/note node: image, video, text, audio
-				const imgBtn = menuEl.createDiv({ cls: 'clickable-icon bragi-gen-image' })
-				setIcon(imgBtn, 'bragi-gen-image')
-				setTooltip(imgBtn, 'Generate Image', { placement: 'top' })
-				imgBtn.addEventListener('click', (e) => {
-					e.stopPropagation()
-					onGenerateImage(selectedNode)
-				})
+				if (!menuEl.querySelector('.bragi-gen-image')) {
+					const imgBtn = menuEl.createDiv({ cls: 'clickable-icon bragi-gen-image' })
+					setIcon(imgBtn, 'bragi-gen-image')
+					setTooltip(imgBtn, 'Generate image', { placement: 'top' })
+					imgBtn.addEventListener('click', (e) => {
+						e.stopPropagation()
+						onGenerateImage(selectedNode)
+					})
+				}
 
-				const vidBtn = menuEl.createDiv({ cls: 'clickable-icon bragi-gen-video' })
-				setIcon(vidBtn, 'bragi-gen-video')
-				setTooltip(vidBtn, 'Generate Video', { placement: 'top' })
-				vidBtn.addEventListener('click', (e) => {
-					e.stopPropagation()
-					onGenerateVideo(selectedNode)
-				})
+				if (!menuEl.querySelector('.bragi-gen-video')) {
+					const vidBtn = menuEl.createDiv({ cls: 'clickable-icon bragi-gen-video' })
+					setIcon(vidBtn, 'bragi-gen-video')
+					setTooltip(vidBtn, 'Generate video', { placement: 'top' })
+					vidBtn.addEventListener('click', (e) => {
+						e.stopPropagation()
+						onGenerateVideo(selectedNode)
+					})
+				}
 
-				if (onGenerateText) {
+				if (onGenerateText && !menuEl.querySelector('.bragi-gen-text')) {
 					const txtBtn = menuEl.createDiv({ cls: 'clickable-icon bragi-gen-text' })
 					setIcon(txtBtn, 'bragi-gen-text')
-					setTooltip(txtBtn, 'Generate Text', { placement: 'top' })
+					setTooltip(txtBtn, 'Generate text', { placement: 'top' })
 					txtBtn.addEventListener('click', (e) => {
 						e.stopPropagation()
 						onGenerateText(selectedNode)
 					})
 				}
 
-				if (onGenerateAudio) {
+				if (onGenerateAudio && !menuEl.querySelector('.bragi-gen-audio')) {
 					const audioBtn = menuEl.createDiv({ cls: 'clickable-icon bragi-gen-audio' })
 					setIcon(audioBtn, 'bragi-gen-audio')
-					setTooltip(audioBtn, 'Generate Audio', { placement: 'top' })
+					setTooltip(audioBtn, 'Generate audio', { placement: 'top' })
 					audioBtn.addEventListener('click', (e) => {
 						e.stopPropagation()
 						onGenerateAudio(selectedNode)
@@ -495,20 +560,20 @@ export function patchCanvasMenu(
 
 			if (isAudioNode) {
 				// Audio file node: STT, isolate
-				if (onSTT) {
+				if (onSTT && !menuEl.querySelector('.bragi-stt')) {
 					const sttBtn = menuEl.createDiv({ cls: 'clickable-icon bragi-stt' })
 					setIcon(sttBtn, 'bragi-stt')
-					setTooltip(sttBtn, 'Speech to Text', { placement: 'top' })
+					setTooltip(sttBtn, 'Speech to text', { placement: 'top' })
 					sttBtn.addEventListener('click', (e) => {
 						e.stopPropagation()
 						onSTT(selectedNode)
 					})
 				}
 
-				if (onIsolateAudio) {
+				if (onIsolateAudio && !menuEl.querySelector('.bragi-isolate')) {
 					const isolateBtn = menuEl.createDiv({ cls: 'clickable-icon bragi-isolate' })
 					setIcon(isolateBtn, 'bragi-isolate')
-					setTooltip(isolateBtn, 'Isolate Audio', { placement: 'top' })
+					setTooltip(isolateBtn, 'Isolate audio', { placement: 'top' })
 					isolateBtn.addEventListener('click', (e) => {
 						e.stopPropagation()
 						onIsolateAudio(selectedNode)
@@ -516,16 +581,27 @@ export function patchCanvasMenu(
 				}
 			}
 
+			if (isImageNode && onAssetId && !menuEl.querySelector('.bragi-asset-btn')) {
+				const currentAssetId = (nodeData as unknown).bragiAssetId || ''
+				const assetBtn = menuEl.createDiv({ cls: `clickable-icon bragi-asset-btn ${currentAssetId ? 'has-asset' : ''}` })
+				setIcon(assetBtn, 'link')
+				setTooltip(assetBtn, currentAssetId ? 'Asset ID bound' : 'Set asset ID', { placement: 'top' })
+				assetBtn.addEventListener('click', (e) => {
+					e.stopPropagation()
+					onAssetId(selectedNode)
+				})
+			}
+
 			// Download button for all media nodes (image, video, audio)
-			if (isMediaNode) {
+			if (isMediaNode && !menuEl.querySelector('.bragi-download')) {
 				const downloadBtn = menuEl.createDiv({ cls: 'clickable-icon bragi-download' })
 				setIcon(downloadBtn, 'bragi-download')
-					setTooltip(downloadBtn, 'Download', { placement: 'top' })
-					downloadBtn.addEventListener('click', (e) => {
-						e.stopPropagation()
-						void downloadMediaFile(filePath, selectedNode)
-					})
-				}
+				setTooltip(downloadBtn, 'Download', { placement: 'top' })
+				downloadBtn.addEventListener('click', (e) => {
+					e.stopPropagation()
+					void downloadMediaFile(filePath, selectedNode)
+				})
+			}
 
 			// Re-render to recalculate position with new width
 			next.call(this)
@@ -677,7 +753,7 @@ export function unpatchCanvasMenu(): void {
 }
 
 export function removeToolbarButtons(): void {
-	activeDocument.querySelectorAll('.bragi-gen-image, .bragi-gen-video, .bragi-gen-text, .bragi-gen-audio, .bragi-stt, .bragi-isolate, .bragi-download, .bragi-duplicate, .bragi-pin, .bragi-pano, .bragi-split, .bragi-grid, .bragi-more').forEach(el => {
+	activeDocument.querySelectorAll('.bragi-gen-image, .bragi-gen-video, .bragi-gen-text, .bragi-gen-audio, .bragi-stt, .bragi-isolate, .bragi-download, .bragi-asset-btn, .bragi-duplicate, .bragi-pin, .bragi-pano, .bragi-split, .bragi-grid, .bragi-more').forEach(el => {
 		if (el.previousElementSibling?.classList.contains('canvas-menu-separator')) {
 			el.previousElementSibling.remove()
 		}

@@ -220,6 +220,7 @@ export default class BragiCanvas extends Plugin {
 				console.error('Bragi split grid error:', err)
 				new Notice(`Split failed: ${err.message || err}`)
 			}),
+			(node) => this.showAssetIdModal(node),
 		)
 
 		// Refresh thumbnails periodically to catch edge changes
