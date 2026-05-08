@@ -216,7 +216,7 @@ export class BragiSettingTab extends PluginSettingTab {
 			.setDesc('Optional. When set, clients must send "Authorization: Bearer <token>" on every request. Leave blank for open localhost access.')
 			.addText(text => {
 				text.inputEl.type = 'password'
-				text.setPlaceholder('(Leave blank to disable auth)')
+				text.setPlaceholder('Leave blank to disable auth')
 					.setValue(this.plugin.settings.mcpToken)
 					.onChange((v) => {
 						void (async () => {
