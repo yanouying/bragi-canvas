@@ -7,6 +7,8 @@ import { AddProviderModal } from './ui/add-provider-modal'
 import { AddModelModal } from './ui/add-model-modal'
 import { removeProvider } from './ui/remove-provider-modal'
 
+type UnknownRecord = Record<string, unknown>
+
 /** Legacy map kept because `renderModelGroup` looks up display names by id. */
 const PROVIDER_DISPLAY_NAMES: Record<string, string> = (() => {
 	const map: Record<string, string> = {}
@@ -137,6 +139,193 @@ export const DEFAULT_SETTINGS: BragiSettings = {
 	mcpToken: '',
 }
 
+type ImportValidationResult =
+	| { ok: true; settings: BragiSettings }
+	| { ok: false }
+
+function isRecord(value: unknown): value is UnknownRecord {
+	return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function cloneDefaultSettings(): BragiSettings {
+	return {
+		...DEFAULT_SETTINGS,
+		providers: { ...DEFAULT_SETTINGS.providers },
+		modelPrefs: {},
+		modelOrder: {
+			image: [],
+			video: [],
+			text: [],
+			audio: [],
+		},
+	}
+}
+
+function readOptionalString(source: UnknownRecord, key: string, target: UnknownRecord, errors: string[]): void {
+	if (!(key in source)) return
+	const value = source[key]
+	if (typeof value !== 'string') {
+		errors.push(key)
+		return
+	}
+	target[key] = value
+}
+
+function readOptionalBoolean(source: UnknownRecord, key: string, target: UnknownRecord, errors: string[]): void {
+	if (!(key in source)) return
+	const value = source[key]
+	if (typeof value !== 'boolean') {
+		errors.push(key)
+		return
+	}
+	target[key] = value
+}
+
+function readOptionalPort(source: UnknownRecord, key: string, target: UnknownRecord, errors: string[]): void {
+	if (!(key in source)) return
+	const value = source[key]
+	if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 65535) {
+		errors.push(key)
+		return
+	}
+	target[key] = value
+}
+
+function readLastSelection(source: UnknownRecord, key: string, errors: string[]): LastSelection | undefined {
+	if (!(key in source)) return undefined
+	const value = source[key]
+	if (!isRecord(value)) {
+		errors.push(key)
+		return undefined
+	}
+
+	const result: LastSelection = {}
+
+	if ('modelId' in value) {
+		if (typeof value.modelId !== 'string') errors.push(`${key}.modelId`)
+		else result.modelId = value.modelId
+	}
+
+	if ('batchCount' in value) {
+		if (typeof value.batchCount !== 'number' || !Number.isFinite(value.batchCount)) errors.push(`${key}.batchCount`)
+		else result.batchCount = value.batchCount
+	}
+
+	if ('params' in value) {
+		if (!isRecord(value.params)) {
+			errors.push(`${key}.params`)
+		} else {
+			const params: Record<string, string | number> = {}
+			for (const [paramKey, paramValue] of Object.entries(value.params)) {
+				if (typeof paramValue !== 'string' && (typeof paramValue !== 'number' || !Number.isFinite(paramValue))) {
+					errors.push(`${key}.params.${paramKey}`)
+					continue
+				}
+				params[paramKey] = paramValue
+			}
+			result.params = params
+		}
+	}
+
+	return result
+}
+
+function validateImportedSettings(raw: unknown): ImportValidationResult {
+	if (!isRecord(raw)) return { ok: false }
+
+	const recognizableKeys = [
+		'outputDir',
+		'providers',
+		'modelPrefs',
+		'modelOrder',
+		'mcpEnabled',
+		'mcpPort',
+		'mcpToken',
+	]
+	if (!recognizableKeys.some(key => key in raw)) return { ok: false }
+
+	const errors: string[] = []
+	const settings = cloneDefaultSettings()
+	const target = settings as unknown as UnknownRecord
+
+	readOptionalString(raw, 'outputDir', target, errors)
+	readOptionalBoolean(raw, 'migrationPrompted', target, errors)
+	readOptionalBoolean(raw, 'migrationProviders_1_9', target, errors)
+	readOptionalBoolean(raw, 'mcpEnabled', target, errors)
+	readOptionalPort(raw, 'mcpPort', target, errors)
+	readOptionalString(raw, 'mcpToken', target, errors)
+
+	if ('providers' in raw) {
+		if (!isRecord(raw.providers)) {
+			errors.push('providers')
+		} else {
+			const providerKeys = Object.keys(DEFAULT_SETTINGS.providers) as Array<keyof BragiSettings['providers']>
+			for (const key of providerKeys) {
+				const value = raw.providers[key]
+				if (value === undefined) continue
+				if (typeof value !== 'string') {
+					errors.push(`providers.${key}`)
+					continue
+				}
+				settings.providers[key] = value
+			}
+		}
+	}
+
+	if ('modelPrefs' in raw) {
+		if (!isRecord(raw.modelPrefs)) {
+			errors.push('modelPrefs')
+		} else {
+			for (const [modelId, value] of Object.entries(raw.modelPrefs)) {
+				if (!isRecord(value)) {
+					errors.push(`modelPrefs.${modelId}`)
+					continue
+				}
+				if (typeof value.enabled !== 'boolean') {
+					errors.push(`modelPrefs.${modelId}.enabled`)
+					continue
+				}
+				if ('selectedProvider' in value && typeof value.selectedProvider !== 'string') {
+					errors.push(`modelPrefs.${modelId}.selectedProvider`)
+					continue
+				}
+				settings.modelPrefs[modelId] = {
+					enabled: value.enabled,
+					selectedProvider: typeof value.selectedProvider === 'string' ? value.selectedProvider : '',
+				}
+			}
+		}
+	}
+
+	if ('modelOrder' in raw) {
+		if (!isRecord(raw.modelOrder)) {
+			errors.push('modelOrder')
+		} else {
+			for (const type of ['image', 'video', 'text', 'audio'] as const) {
+				const value = raw.modelOrder[type]
+				if (value === undefined) continue
+				if (!Array.isArray(value) || value.some(item => typeof item !== 'string')) {
+					errors.push(`modelOrder.${type}`)
+					continue
+				}
+				settings.modelOrder[type] = [...value]
+			}
+		}
+	}
+
+	const lastImage = readLastSelection(raw, 'lastImage', errors)
+	const lastVideo = readLastSelection(raw, 'lastVideo', errors)
+	const lastAudio = readLastSelection(raw, 'lastAudio', errors)
+	const lastText = readLastSelection(raw, 'lastText', errors)
+	if (lastImage) settings.lastImage = lastImage
+	if (lastVideo) settings.lastVideo = lastVideo
+	if (lastAudio) settings.lastAudio = lastAudio
+	if (lastText) settings.lastText = lastText
+
+	if (errors.length > 0) return { ok: false }
+	return { ok: true, settings }
+}
+
 export class BragiSettingTab extends PluginSettingTab {
 	plugin: BragiCanvas
 
@@ -162,6 +351,25 @@ export class BragiSettingTab extends PluginSettingTab {
 				.onClick(() => {
 					void this.cleanUpUnusedAssets()
 				}))
+
+		const importInput = containerEl.createEl('input', {
+			type: 'file',
+			cls: 'bragi-hidden',
+		})
+		importInput.accept = '.json,application/json'
+		importInput.addEventListener('change', () => {
+			const file = importInput.files?.[0]
+			importInput.value = ''
+			if (!file) return
+			void this.handleSettingsImportFile(file)
+		})
+
+		new Setting(containerEl)
+			.setName('Import settings')
+			.setDesc('Choose a Bragi Canvas data.json file. If it looks valid, you can replace your current settings.')
+			.addButton(btn => btn
+				.setButtonText('Choose file')
+				.onClick(() => importInput.click()))
 
 		this.renderCloudStorageSection(containerEl)
 
@@ -290,6 +498,90 @@ export class BragiSettingTab extends PluginSettingTab {
 		addBtn.addEventListener('click', () => {
 			new AddProviderModal(this.plugin, undefined, () => this.display()).open()
 		})
+	}
+
+	private async handleSettingsImportFile(file: File): Promise<void> {
+		if (!file.name.toLowerCase().endsWith('.json')) {
+			this.showImportFailedModal()
+			return
+		}
+
+		let parsed: unknown
+		try {
+			parsed = JSON.parse(await file.text())
+		} catch {
+			this.showImportFailedModal()
+			return
+		}
+
+		const result = validateImportedSettings(parsed)
+		if (!result.ok) {
+			this.showImportFailedModal()
+			return
+		}
+
+		this.showImportConfirmModal(file.name, result.settings)
+	}
+
+	private showImportFailedModal(): void {
+		const modal = new Modal(this.app)
+		modal.modalEl.classList.add('bragi-modal')
+		modal.titleEl.setText('Can\'t import this file')
+		modal.contentEl.createEl('p', {
+			text: 'This does not look like a Bragi Canvas data.json file. Please choose the data.json file from a Bragi Canvas plugin folder.',
+		})
+		modal.contentEl.createEl('p', {
+			text: 'No settings were changed.',
+			cls: 'mod-muted',
+		})
+
+		const row = modal.contentEl.createDiv({ cls: 'modal-button-container' })
+		const closeBtn = row.createEl('button', { text: 'Close' })
+		closeBtn.addEventListener('click', () => modal.close())
+		modal.open()
+	}
+
+	private showImportConfirmModal(fileName: string, importedSettings: BragiSettings): void {
+		const modal = new Modal(this.app)
+		modal.modalEl.classList.add('bragi-modal')
+		modal.titleEl.setText('Import settings?')
+		modal.contentEl.createEl('p', {
+			text: `The file "${fileName}" looks OK.`,
+		})
+		modal.contentEl.createEl('p', {
+			text: 'This will replace your current settings, including providers, model list, model order, and local server options.',
+		})
+		modal.contentEl.createEl('p', {
+			text: 'This can\'t be undone. Only import a file from someone you trust because it can include API keys.',
+			cls: 'mod-warning',
+		})
+
+		const row = modal.contentEl.createDiv({ cls: 'modal-button-container' })
+		const cancelBtn = row.createEl('button', { text: 'Cancel' })
+		cancelBtn.addEventListener('click', () => modal.close())
+
+		const importBtn = row.createEl('button', { text: 'Import settings', cls: 'mod-destructive' })
+		importBtn.classList.add('bragi-danger-button')
+		importBtn.addEventListener('click', () => {
+			void (async () => {
+				const previousSettings = this.plugin.settings
+				try {
+					this.plugin.settings = importedSettings
+					await this.plugin.saveSettings()
+					this.plugin.stopMcpServer()
+					if (this.plugin.settings.mcpEnabled) this.plugin.startMcpServer()
+					modal.close()
+					this.display()
+					new Notice('Settings imported')
+				} catch (err) {
+					this.plugin.settings = previousSettings
+					console.error('Bragi Canvas: settings import failed', err)
+					new Notice('Import failed. No settings were changed.')
+				}
+			})()
+		})
+
+		modal.open()
 	}
 
 	private renderModelGroup(containerEl: HTMLElement, title: string, type: GenerationType): void {
