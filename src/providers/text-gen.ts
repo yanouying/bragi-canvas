@@ -1,4 +1,3 @@
-import type { App } from 'obsidian'
 import { requestUrl } from 'obsidian'
 import { signRequest } from './sigv4'
 import { stringParam } from './params'

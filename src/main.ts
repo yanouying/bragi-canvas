@@ -8,7 +8,7 @@ import { patchCanvasMenu, unpatchCanvasMenu, removeToolbarButtons, replaceCanvas
 import { openPanoramaViewer } from './panorama'
 import { registerBragiIcons } from './icons'
 import { showGenerateBar, showBatchGenerateBar, hideGenerateBar } from './panel'
-import { getUpstreamInputs, resolvePrompts } from './edge-parser'
+import { getUpstreamInputs } from './edge-parser'
 import { refreshAllThumbnails, removeAllThumbnails, getOrderedImages, getAssetIds } from './ref-thumbnails'
 import { refreshAllTextRefs, removeAllTextRefs, getOrderedPrompts } from './text-refs'
 import { refreshAllAudioRefs, removeAllAudioRefs } from './audio-refs'

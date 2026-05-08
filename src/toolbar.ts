@@ -162,22 +162,6 @@ function getMoreItems(menuEl: HTMLElement): { items: MoreDropdownItem[]; shouldH
 	return { items: getFallbackMoreItems(menuEl), shouldHide: false }
 }
 
-/** Open the built-in align/arrange submenu and click "Arrange in a grid". */
-function triggerArrangeInGrid(alignBtn: HTMLElement): void {
-	alignBtn.click()
-	// Submenu renders asynchronously; wait a frame then find the item.
-	requestAnimationFrame(() => {
-		const items = activeDocument.querySelectorAll('.menu-item, .menu .menu-item, [role="menuitem"]')
-		for (const el of Array.from(items)) {
-			const text = (el.textContent || '').toLowerCase()
-			if (text.includes('grid')) {
-				(el as HTMLElement).click()
-				return
-			}
-		}
-	})
-}
-
 function replaceBuiltinIcons(menuEl: HTMLElement): void {
 	const icons = menuEl.querySelectorAll('.clickable-icon:not(.bragi-gen-image):not(.bragi-gen-video):not(.bragi-gen-text)')
 	icons.forEach((el) => {
@@ -473,7 +457,6 @@ export function patchCanvasMenu(
 			const filePath = (nodeData as unknown).file || ''
 			const isAudioNode = nodeData.type === 'file' && /\.(mp3|wav|flac|m4a|ogg|aac)$/i.test(filePath)
 			const isMediaNode = nodeData.type === 'file' && /\.(png|jpg|jpeg|webp|gif|mp4|mov|webm|mp3|wav|flac|m4a|ogg|aac)$/i.test(filePath)
-			const isImageNode = nodeData.type === 'file' && /\.(png|jpg|jpeg|webp|gif)$/i.test(filePath)
 			const isGenerating = (nodeData as unknown).bragiGenerating === true || (nodeData as unknown).ovidGenerating === true
 
 			// Generating node: hide all menu items except focus/zoom

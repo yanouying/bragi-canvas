@@ -1,6 +1,6 @@
-import { App, Modal, Notice } from 'obsidian'
+import { Modal, Notice } from 'obsidian'
 import type BragiCanvas from '../main'
-import { PROVIDERS, getProvider, getConfiguredProviderIds } from '../providers/registry'
+import { getProvider, getConfiguredProviderIds } from '../providers/registry'
 import { ALL_MODELS, type ModelConfig } from '../models'
 
 type Impact = {

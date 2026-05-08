@@ -1,4 +1,4 @@
-import { App, Modal, Notice, Plugin, TFolder } from 'obsidian'
+import { App, Modal, Notice, TFolder } from 'obsidian'
 import type BragiCanvas from './main'
 
 const NEW_ASSETS_DIR = '_bragi/assets'
@@ -214,13 +214,11 @@ async function performMigration(plugin: BragiCanvas, folders: TFolder[]): Promis
 		}
 
 		// 5. Remove now-empty legacy folders
-		let removedFolders = 0
 		for (const folder of folders) {
 			try {
 				const entries = await adapter.list(folder.path)
 				if (entries.files.length === 0 && entries.folders.length === 0) {
 					await adapter.rmdir(folder.path, false)
-					removedFolders++
 				}
 			} catch { /* leave it */ }
 		}

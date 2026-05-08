@@ -1,6 +1,6 @@
-import { App, Modal, Setting, Notice, setIcon, setTooltip } from 'obsidian'
+import { Modal, Setting, Notice, setIcon, setTooltip } from 'obsidian'
 import type BragiCanvas from '../main'
-import { PROVIDERS, type ProviderSpec, type ProviderField } from '../providers/registry'
+import { PROVIDERS, type ProviderSpec } from '../providers/registry'
 
 export interface AddProviderModalOptions {
 	/** Jump straight to the form for this provider (skips the picker). */
@@ -43,7 +43,7 @@ export class AddProviderModal extends Modal {
 	private plugin: BragiCanvas
 
 	onOpen() {
-		const { contentEl, titleEl, modalEl } = this
+		const { contentEl, modalEl } = this
 		modalEl.classList.add('bragi-modal', 'bragi-add-provider-modal')
 		contentEl.empty()
 

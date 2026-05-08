@@ -1,4 +1,4 @@
-import { App, Notice } from 'obsidian'
+import { Notice } from 'obsidian'
 import type BragiCanvas from './main'
 import type { Canvas, CanvasNode } from './types/canvas-internal'
 import { detectGrid, splitGrid, loadImageFromBinary } from './grid-split'
@@ -56,7 +56,7 @@ export async function splitImageNodeIntoTiles(plugin: BragiCanvas, canvas: Canva
 
 	// Place new nodes: vertically stacked, to the right of source, with uniform gap
 	const src = data
-	const srcX = src.x, srcY = src.y, srcW = src.width, srcH = src.height
+	const srcX = src.x, srcY = src.y, srcW = src.width
 	const gap = 40
 	const targetW = Math.max(200, Math.round(srcW * 0.6))  // smaller so stack doesn't explode
 	const aspect = tiles[0].width / tiles[0].height

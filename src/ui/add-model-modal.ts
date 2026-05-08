@@ -1,4 +1,4 @@
-import { App, Modal, Notice, setTooltip } from 'obsidian'
+import { Modal, Notice, setTooltip } from 'obsidian'
 import type BragiCanvas from '../main'
 import { ALL_MODELS, type ModelConfig, type GenerationType } from '../models'
 import { getProvider, getConfiguredProviderIds } from '../providers/registry'

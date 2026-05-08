@@ -1,8 +1,8 @@
-import { App, Modal, Notice, PluginSettingTab, Setting, setIcon, setTooltip, requestUrl } from 'obsidian'
+import { App, Modal, Notice, PluginSettingTab, Setting, setIcon, setTooltip } from 'obsidian'
 import type BragiCanvas from './main'
-import { ALL_MODELS, getModelsByType, getActiveProvider } from './models/index'
+import { getModelsByType, getActiveProvider } from './models/index'
 import type { GenerationType } from './models/types'
-import { PROVIDERS, getProvider, getConfiguredProviderIds } from './providers/registry'
+import { PROVIDERS, getConfiguredProviderIds } from './providers/registry'
 import { AddProviderModal } from './ui/add-provider-modal'
 import { AddModelModal } from './ui/add-model-modal'
 import { removeProvider } from './ui/remove-provider-modal'
@@ -25,20 +25,6 @@ function autoSizeSelect(select: HTMLSelectElement): void {
 	}
 	select.addEventListener('change', update)
 	requestAnimationFrame(update)
-}
-
-function createProviderDesc(hint: string, linkText: string, url: string): DocumentFragment {
-	const frag = activeDocument.createFragment()
-	frag.appendText(`Paste your API key (${hint}). `)
-	const a = createEl('a')
-	a.href = url
-	a.textContent = linkText
-	a.addEventListener('click', (e) => {
-		e.preventDefault()
-		window.open(url, '_blank')
-	})
-	frag.appendChild(a)
-	return frag
 }
 
 function addSettingHeading(containerEl: HTMLElement, name: string): void {

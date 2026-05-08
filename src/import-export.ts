@@ -32,7 +32,7 @@ function ext(name: string): string {
 
 // ── Export ──────────────────────────────────────────────────────────
 
-export async function exportCanvas(app: App, settings: BragiSettings, canvas: Canvas): Promise<void> {
+export async function exportCanvas(app: App, _settings: BragiSettings, canvas: Canvas): Promise<void> {
 	const notice = new Notice('Exporting canvas…', 0)
 
 	try {
@@ -148,7 +148,7 @@ export async function exportCanvas(app: App, settings: BragiSettings, canvas: Ca
 
 export async function importCanvas(
 	app: App,
-	settings: BragiSettings,
+	_settings: BragiSettings,
 	canvas: Canvas | null,
 	mode: 'merge' | 'new'
 ): Promise<void> {
@@ -246,7 +246,7 @@ export async function importCanvas(
 				pathMap.set(pkgPath, vaultPath)
 				extracted++
 				notice.setMessage(`Extracting assets… ${extracted}/${assetFiles.length}`)
-			} catch (err: unknown) {
+			} catch {
 				new Notice(`Couldn't extract ${basename(pkgPath)}`)
 			}
 		}

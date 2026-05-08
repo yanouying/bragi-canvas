@@ -4,7 +4,6 @@ import { getUpstreamInputs } from './edge-parser'
 
 const STRIP_CLASS = 'bragi-ref-strip'
 const NODE_HAS_REFS_CLASS = 'bragi-has-refs'
-const STRIP_HEIGHT = 72
 
 const adjustedNodes = new Set<string>()
 
@@ -147,7 +146,8 @@ export function updateRefThumbnails(canvas: Canvas, node: CanvasNode, app: App):
 
 			// Save to node metadata (drop legacy key so it doesn't drift)
 			const data = node.getData() as unknown
-			const { ovidImageOrder: _legacy, ...rest } = data
+			const rest = { ...data }
+			delete rest.ovidImageOrder
 			node.setData({ ...rest, bragiImageOrder: newOrder })
 
 			// Force rebuild

@@ -4,7 +4,7 @@ import { getEnabledModels, getActiveProvider } from './models/index'
 import { getConfiguredProviderIds } from './providers/registry'
 import { getUpstreamInputs } from './edge-parser'
 import type { BragiSettings } from './settings'
-import type { Canvas, CanvasNode } from './types/canvas-internal'
+import type { CanvasNode } from './types/canvas-internal'
 
 export interface PanelResult {
 	prompt: string
@@ -552,7 +552,7 @@ export function showBatchGenerateBar(
 	nodes: CanvasNode[],
 	type: GenerationType,
 	settings: BragiSettings,
-	app: App,
+	_app: App,
 	onSubmit: (nodes: CanvasNode[], result: PanelResult) => void,
 	onSaveSettings?: () => void,
 ): void {

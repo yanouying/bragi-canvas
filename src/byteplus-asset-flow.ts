@@ -1,5 +1,3 @@
-import type { App, Notice as NoticeType } from 'obsidian'
-import { Notice } from 'obsidian'
 import type BragiCanvas from './main'
 import type { Canvas, CanvasNode } from './types/canvas-internal'
 import { uploadRef } from './providers/upload'
@@ -14,13 +12,6 @@ import {
 } from './providers/byteplus-assets'
 
 const PROVIDER_KEY = 'byteplus'  // used inside node's bragiAssetIds map
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-	const bytes = new Uint8Array(buffer)
-	let binary = ''
-	for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
-	return btoa(binary)
-}
 
 function imageExtToMime(ext: string): string {
 	return ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`
@@ -94,7 +85,8 @@ function setCachedAssetId(node: CanvasNode, assetId: string) {
 function clearCachedAssetId(node: CanvasNode) {
 	const d = node.getData() as unknown
 	if (!d.bragiAssetIds) return
-	const { [PROVIDER_KEY]: _, ...rest } = d.bragiAssetIds
+	const rest = { ...d.bragiAssetIds }
+	delete rest[PROVIDER_KEY]
 	node.setData({ ...d, bragiAssetIds: rest })
 }
 

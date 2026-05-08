@@ -504,27 +504,6 @@ export function duplicateWithConnections(canvas: Canvas, node: CanvasNode): void
 	}
 }
 
-function copyIncomingEdges(canvas: Canvas, sourceNode: CanvasNode, newNode: CanvasNode): void {
-	const incomingEdges = getIncomingEdgeData(canvas, sourceNode)
-	if (incomingEdges.length === 0) return
-
-	const currentData = canvas.getData()
-	const newEdges = incomingEdges.map(e => ({
-		id: generateId(),
-		fromNode: e.fromNode,
-		fromSide: e.fromSide,
-		fromEnd: e.fromEnd,
-		toNode: newNode.id,
-		toSide: e.toSide,
-		toEnd: e.toEnd,
-	}))
-
-	canvas.importData({
-		nodes: currentData.nodes,
-		edges: [...currentData.edges, ...newEdges],
-	})
-}
-
 function getIncomingEdgeData(canvas: Canvas, node: CanvasNode): Array<{
 	fromNode: string
 	fromSide: string
