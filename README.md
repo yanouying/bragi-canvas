@@ -97,4 +97,4 @@ Release tags must be plain semantic versions such as `1.12.4`. Do not prefix tag
 
 ## License
 
-Bragi Canvas is licensed under the Business Source License 1.1 (`BUSL-1.1`). See [LICENSE](LICENSE).
+Bragi Canvas is licensed under the Mozilla Public License 2.0 (`MPL-2.0`). See [LICENSE](LICENSE).
