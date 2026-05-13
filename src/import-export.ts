@@ -3,9 +3,34 @@ import { remote } from 'electron'
 import * as fs from 'fs'
 import type { BragiSettings } from './settings'
 import type { Canvas } from './types/canvas-internal'
-import JSZip from 'jszip'
 
-const MANIFEST_VERSION = 1
+const PACKAGE_FORMAT = 'bragi-canvas-package'
+const PACKAGE_VERSION = 2
+const TARGET_ASSET_DIR = '_bragi/assets'
+const FORBIDDEN_ASSET_FILENAMES = new Set(['main.js', 'manifest.json', 'styles.css'])
+
+type CanvasData = {
+	nodes?: Record<string, unknown>[]
+	edges?: Record<string, unknown>[]
+	[key: string]: unknown
+}
+
+type BragiPackageAsset = {
+	path: string
+	encoding: 'base64'
+	data: string
+}
+
+type BragiPackageFile = {
+	format: typeof PACKAGE_FORMAT
+	version: typeof PACKAGE_VERSION
+	exportDate: string
+	canvasName: string
+	nodeCount: number
+	assetCount: number
+	canvas: CanvasData
+	assets: BragiPackageAsset[]
+}
 
 function generateId(): string {
 	return Math.random().toString(36).substring(2, 18)
@@ -30,6 +55,101 @@ function ext(name: string): string {
 	return idx > 0 ? name.substring(idx) : ''
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+	return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
+}
+
+function asCanvasData(value: unknown): CanvasData {
+	return value && typeof value === 'object' ? value as CanvasData : { nodes: [], edges: [] }
+}
+
+function toBase64(buffer: ArrayBuffer): string {
+	return Buffer.from(buffer).toString('base64')
+}
+
+function fromBase64(data: string): ArrayBuffer {
+	const bytes = Buffer.from(data, 'base64')
+	return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+}
+
+function safePackagePath(vaultPath: string, assetBase: string): string {
+	const rawRelative = vaultPath.startsWith(assetBase + '/')
+		? vaultPath.substring(assetBase.length + 1)
+		: basename(vaultPath)
+	const parts = rawRelative
+		.split('/')
+		.filter(part => part && part !== '.' && part !== '..')
+	let fileName = parts.pop() || 'asset'
+	if (FORBIDDEN_ASSET_FILENAMES.has(fileName.toLowerCase())) {
+		fileName = `asset-${fileName}`
+	}
+	parts.push(fileName)
+	return `assets/${parts.join('/')}`
+}
+
+function validateAssetPackagePath(pkgPath: string): string {
+	if (!pkgPath.startsWith('assets/')) {
+		throw new Error('A bragi package asset points outside its assets folder')
+	}
+	if (pkgPath.includes('\\') || pkgPath.includes('\0') || pkgPath.startsWith('/') || /^[A-Za-z]:/.test(pkgPath)) {
+		throw new Error('A bragi package contains an unsafe asset path')
+	}
+
+	const relativePart = pkgPath.substring('assets/'.length)
+	const parts = relativePart.split('/')
+	if (!relativePart || parts.some(part => !part || part === '.' || part === '..')) {
+		throw new Error('A bragi package contains an unsafe asset path')
+	}
+	if (FORBIDDEN_ASSET_FILENAMES.has(parts[parts.length - 1].toLowerCase())) {
+		throw new Error('A bragi package cannot contain plugin release files')
+	}
+	return relativePart
+}
+
+function readBragiPackage(filePath: string): { canvas: CanvasData; assets: BragiPackageAsset[] } {
+	const raw = fs.readFileSync(filePath, 'utf8')
+	const parsed = JSON.parse(raw) as unknown
+	const pkg = asRecord(parsed)
+
+	if (!pkg || pkg.format !== PACKAGE_FORMAT || pkg.version !== PACKAGE_VERSION) {
+		throw new Error("This doesn't look like a valid bragi package")
+	}
+
+	const canvas = asCanvasData(pkg.canvas)
+	if (!Array.isArray(canvas.nodes) || !Array.isArray(canvas.edges)) {
+		throw new Error('This bragi package has a damaged canvas')
+	}
+
+	const assetsValue = pkg.assets
+	if (assetsValue !== undefined && !Array.isArray(assetsValue)) {
+		throw new Error('This bragi package has a damaged asset list')
+	}
+
+	const assets: BragiPackageAsset[] = []
+	for (const item of assetsValue || []) {
+		const asset = asRecord(item)
+		if (!asset || typeof asset.path !== 'string' || asset.encoding !== 'base64' || typeof asset.data !== 'string') {
+			throw new Error('This bragi package has a damaged asset')
+		}
+		validateAssetPackagePath(asset.path)
+		assets.push({ path: asset.path, encoding: 'base64', data: asset.data })
+	}
+
+	return { canvas: JSON.parse(JSON.stringify(canvas)) as CanvasData, assets }
+}
+
+async function ensureVaultFolder(app: App, dir: string): Promise<void> {
+	if (!dir) return
+	const parts = dir.split('/').filter(Boolean)
+	let current = ''
+	for (const part of parts) {
+		current = current ? `${current}/${part}` : part
+		if (!await app.vault.adapter.exists(current)) {
+			await app.vault.adapter.mkdir(current)
+		}
+	}
+}
+
 // ── Export ──────────────────────────────────────────────────────────
 
 export async function exportCanvas(app: App, _settings: BragiSettings, canvas: Canvas): Promise<void> {
@@ -46,7 +166,7 @@ export async function exportCanvas(app: App, _settings: BragiSettings, canvas: C
 		const canvasName = withoutExt(basename(canvasFilePath))
 		const assetBase = '_bragi/assets'
 
-		const data = canvas.getData() as unknown
+		const data = asCanvasData(canvas.getData())
 		const cloned = JSON.parse(JSON.stringify(data))
 
 		// Collect all file references
@@ -58,12 +178,7 @@ export async function exportCanvas(app: App, _settings: BragiSettings, canvas: C
 		const usedPackagePaths = new Set<string>()
 
 		for (const vaultPath of fileRefs) {
-			let pkgPath: string
-			if (vaultPath.startsWith(assetBase + '/')) {
-				pkgPath = 'assets/' + vaultPath.substring(assetBase.length + 1)
-			} else {
-				pkgPath = 'assets/' + basename(vaultPath)
-			}
+			let pkgPath = safePackagePath(vaultPath, assetBase)
 			// Handle collisions
 			if (usedPackagePaths.has(pkgPath)) {
 				const base = withoutExt(pkgPath)
@@ -79,20 +194,16 @@ export async function exportCanvas(app: App, _settings: BragiSettings, canvas: C
 		// Rewrite paths in cloned data
 		rewritePaths(cloned, pathMap)
 
-		// Build zip
-		const zip = new JSZip()
-
-		// Manifest
-		zip.file('manifest.json', JSON.stringify({
-			version: MANIFEST_VERSION,
-			bragiVersion: '1.1.0',
+		const packageData: BragiPackageFile = {
+			format: PACKAGE_FORMAT,
+			version: PACKAGE_VERSION,
 			exportDate: new Date().toISOString(),
 			canvasName,
 			nodeCount: cloned.nodes?.length || 0,
 			assetCount: fileRefs.length,
-		}, null, 2))
-
-		zip.file('canvas.json', JSON.stringify(cloned, null, 2))
+			canvas: cloned,
+			assets: [],
+		}
 
 		// Add asset files
 		let added = 0
@@ -100,7 +211,11 @@ export async function exportCanvas(app: App, _settings: BragiSettings, canvas: C
 			try {
 				if (await app.vault.adapter.exists(vaultPath)) {
 					const binary = await app.vault.adapter.readBinary(vaultPath)
-					zip.file(pkgPath, binary)
+					packageData.assets.push({
+						path: pkgPath,
+						encoding: 'base64',
+						data: toBase64(binary),
+					})
 					added++
 					notice.setMessage(`Reading assets… ${added}/${fileRefs.length}`)
 				} else {
@@ -111,11 +226,9 @@ export async function exportCanvas(app: App, _settings: BragiSettings, canvas: C
 			}
 		}
 
-		notice.setMessage('Compressing…')
-		const buffer = await zip.generateAsync(
-			{ type: 'arraybuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } },
-			(meta) => { notice.setMessage(`Compressing… ${Math.round(meta.percent)}%`) }
-		)
+		packageData.assetCount = added
+		notice.setMessage('Writing package…')
+		const buffer = Buffer.from(JSON.stringify(packageData, null, 2), 'utf8')
 
 		// Save dialog
 		const result = await remote.dialog.showSaveDialog({
@@ -170,17 +283,8 @@ export async function importCanvas(
 			return
 		}
 
-		const fileBuffer = fs.readFileSync(openResult.filePaths[0])
-		const zip = await JSZip.loadAsync(fileBuffer)
-
-		const canvasJsonFile = zip.file('canvas.json')
-		if (!canvasJsonFile) {
-			notice.hide()
-			new Notice("This doesn't look like a valid bragi package")
-			return
-		}
-
-		const importedData = JSON.parse(await canvasJsonFile.async('string'))
+		const packageFile = readBragiPackage(openResult.filePaths[0])
+		const importedData = packageFile.canvas
 
 		// Determine target asset directory
 		let targetCanvasDir: string
@@ -209,28 +313,22 @@ export async function importCanvas(
 			}
 		}
 
-		const targetAssetDir = '_bragi/assets'
-
-		// Extract assets
-		notice.setMessage('Extracting assets…')
-		const assetFiles = Object.keys(zip.files).filter(p => p.startsWith('assets/') && !zip.files[p].dir)
+		// Import assets. Bragi packages are data files, not plugin update archives:
+		// assets are only ever written into the vault-scoped _bragi/assets folder.
+		notice.setMessage('Importing assets…')
 		const pathMap = new Map<string, string>()
 		let extracted = 0
 
-		if (!await app.vault.adapter.exists(targetAssetDir)) {
-			await app.vault.adapter.mkdir(targetAssetDir)
-		}
+		await ensureVaultFolder(app, TARGET_ASSET_DIR)
 
-		for (const pkgPath of assetFiles) {
+		for (const asset of packageFile.assets) {
 			try {
-				const relativePart = pkgPath.substring('assets/'.length)
-				let vaultPath = `${targetAssetDir}/${relativePart}`
+				const relativePart = validateAssetPackagePath(asset.path)
+				let vaultPath = `${TARGET_ASSET_DIR}/${relativePart}`
 
 				// Ensure subdirectory exists
 				const parentDir = dirname(vaultPath)
-				if (parentDir && !await app.vault.adapter.exists(parentDir)) {
-					await app.vault.adapter.mkdir(parentDir)
-				}
+				await ensureVaultFolder(app, parentDir)
 
 				// Handle filename collision
 				if (await app.vault.adapter.exists(vaultPath)) {
@@ -241,13 +339,13 @@ export async function importCanvas(
 					vaultPath = `${base}_${i}${extension}`
 				}
 
-				const binary = await zip.files[pkgPath].async('arraybuffer')
+				const binary = fromBase64(asset.data)
 				await app.vault.adapter.writeBinary(vaultPath, binary)
-				pathMap.set(pkgPath, vaultPath)
+				pathMap.set(asset.path, vaultPath)
 				extracted++
-				notice.setMessage(`Extracting assets… ${extracted}/${assetFiles.length}`)
-			} catch {
-				new Notice(`Couldn't extract ${basename(pkgPath)}`)
+				notice.setMessage(`Importing assets… ${extracted}/${packageFile.assets.length}`)
+			} catch (err: unknown) {
+				new Notice(`Couldn't import ${basename(asset.path)}: ${err.message}`)
 			}
 		}
 
@@ -256,7 +354,7 @@ export async function importCanvas(
 
 		if (mode === 'merge' && canvas) {
 			// Collect existing IDs
-			const existingData = canvas.getData() as unknown
+			const existingData = asCanvasData(canvas.getData())
 			const existingIds = new Set<string>([
 				...(existingData.nodes || []).map((n: unknown) => n.id),
 				...(existingData.edges || []).map((e: unknown) => e.id),
@@ -268,8 +366,8 @@ export async function importCanvas(
 			// Calculate offset
 			const offset = calculateMergeOffset(existingData.nodes || [], importedData.nodes || [])
 			for (const node of (importedData.nodes || [])) {
-				node.x += offset.dx
-				node.y += offset.dy
+				node.x = Number(node.x || 0) + offset.dx
+				node.y = Number(node.y || 0) + offset.dy
 			}
 
 			// Merge

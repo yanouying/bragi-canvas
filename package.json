@@ -2,6 +2,7 @@
   "name": "bragi-canvas",
   "version": "1.12.12",
   "description": "Obsidian Canvas AI generation pipeline",
+  "license": "BUSL-1.1",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
@@ -24,7 +25,6 @@
     "@ai-sdk/openai": "^1.0.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "ai": "^4.0.0",
-    "jszip": "^3.10.1",
     "monkey-around": "^3.0.0",
     "pannellum": "^2.5.7"
   }

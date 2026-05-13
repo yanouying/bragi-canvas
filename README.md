@@ -70,6 +70,8 @@ No provider API keys are bundled with the plugin or included in release assets.
 
 Bragi Canvas sends prompts and selected upstream reference files to the AI providers configured by the user when a generation is run. Some providers require publicly fetchable reference URLs; for those workflows, Bragi Canvas may upload temporary copies of selected reference files to the built-in Bragi Relay service so the provider can fetch them. Relay-hosted files are intended as temporary transfer files and are not used for client-side telemetry.
 
+Importing and exporting `.bragi` workflow packages uses the file selected by the user in the desktop file picker. Imported package assets are written only into the vault at `_bragi/assets`; Bragi Canvas does not write plugin update files or modify its installed plugin files at runtime.
+
 The plugin can also run an optional local MCP server on `127.0.0.1` when enabled in settings. If an MCP access token is configured, clients must send the matching bearer token.
 
 Bragi Canvas does not include client-side analytics or telemetry.
@@ -95,4 +97,4 @@ Release tags must be plain semantic versions such as `1.12.4`. Do not prefix tag
 
 ## License
 
-Bragi Canvas is licensed under the Business Source License 1.1. See [LICENSE](LICENSE).
+Bragi Canvas is licensed under the Business Source License 1.1 (`BUSL-1.1`). See [LICENSE](LICENSE).

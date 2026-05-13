@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   release:
@@ -56,11 +58,27 @@ jobs:
           test -f main.js
           test -f styles.css
 
+      - name: Attest release assets
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            manifest.json
+            main.js
+            styles.css
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
+          body: |
+            Bragi Canvas ${{ github.ref_name }}.
+
+            This release was built by GitHub Actions from the tagged source commit.
+            Release assets:
+            - manifest.json
+            - main.js
+            - styles.css
           fail_on_unmatched_files: true
           files: |
             manifest.json
