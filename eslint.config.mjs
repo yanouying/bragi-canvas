@@ -4,6 +4,11 @@ import obsidianmd from 'eslint-plugin-obsidianmd'
 
 export default defineConfig([
 	{
+		linterOptions: {
+			reportUnusedDisableDirectives: 'off',
+		},
+	},
+	{
 		ignores: [
 			'dist/**',
 			'node_modules/**',

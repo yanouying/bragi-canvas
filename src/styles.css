@@ -1,3 +1,5 @@
+/* stylelint-disable declaration-no-important -- Bragi overlays Obsidian Canvas internals, so these selectors must beat core runtime styles. */
+
 /* ── Bragi Canvas — Canvas Node Shadow Removal ──────────────────────── */
 
 .canvas-node-container {

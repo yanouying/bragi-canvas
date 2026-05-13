@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment -- Obsidian Canvas internals and provider payloads are runtime-shaped data that this plugin narrows at use sites. */
 import type { App } from 'obsidian'
 import { requestUrl } from 'obsidian'
 import type { GenerateImageResult, GenerateVideoResult, ImageProvider, VideoProvider } from './types'

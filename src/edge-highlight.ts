@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return -- Obsidian Canvas internals and provider payloads are runtime-shaped data that this plugin narrows at use sites. */
 import type { Canvas, CanvasNode, CanvasEdge } from './types/canvas-internal'
 
 const HIGHLIGHT_CLASS = 'bragi-edge-connected'

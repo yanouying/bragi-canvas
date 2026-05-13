@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment -- Obsidian Canvas internals and provider payloads are runtime-shaped data that this plugin narrows at use sites. */
 import { Notice } from 'obsidian'
 import type BragiCanvas from './main'
 import type { Canvas, CanvasNode } from './types/canvas-internal'
