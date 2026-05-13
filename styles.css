@@ -126,6 +126,12 @@ g:hover > .canvas-display-path {
 /* ── Bragi Canvas Menu — button order ──
    Layout: gen icons | separator | builtins + pin/grid | more */
 
+.bragi-canvas-menu .clickable-icon {
+	order: 3;
+	color: var(--text-normal);
+	--icon-size: 20px;
+}
+
 .bragi-canvas-menu .bragi-gen-image,
 .bragi-canvas-menu .bragi-gen-video,
 .bragi-canvas-menu .bragi-gen-text,
@@ -142,12 +148,6 @@ g:hover > .canvas-display-path {
 	border-radius: 8px;
 	border: 1px solid var(--background-modifier-border);
 	box-shadow: 0 1px 8px rgba(0, 0, 0, 0.04);
-}
-
-.bragi-canvas-menu .clickable-icon {
-	order: 3;
-	color: var(--text-normal);
-	--icon-size: 20px;
 }
 
 .theme-dark .bragi-canvas-menu .clickable-icon {

@@ -76,6 +76,7 @@ const ICON_REPLACEMENTS: Record<string, string> = {
 	'pencil': 'bragi-edit',
 	'group': 'bragi-group',
 	'align': 'bragi-align',
+	'background': 'bragi-background',
 }
 
 /**
@@ -184,7 +185,16 @@ function findColorButton(menuEl: HTMLElement): HTMLElement | null {
 }
 
 function findDeleteButton(menuEl: HTMLElement): HTMLElement | null {
-	return findBuiltinByLabel(menuEl, 'delete') || findBuiltinByLabel(menuEl, 'remove') || findBuiltinByLabel(menuEl, 'trash')
+	for (const btn of getNativeMenuButtons(menuEl)) {
+		const label = getButtonLabel(btn)
+		if (label.includes('remove label')) continue
+		if (label.includes('delete') || label.includes('remove') || label.includes('trash')) return btn
+	}
+	return null
+}
+
+function findRemoveLabelButton(menuEl: HTMLElement): HTMLElement | null {
+	return findBuiltinByLabel(menuEl, 'remove label')
 }
 
 function reorderMenuButtons(menuEl: HTMLElement, buttons: Array<HTMLElement | null>): void {
@@ -213,6 +223,13 @@ function configureStandardMoreItems(menuEl: HTMLElement, startOrder: number): nu
 	if (colorBtn) setMoreItem(colorBtn, 'Set color', 'bragi-color', order++)
 	const deleteBtn = findDeleteButton(menuEl)
 	if (deleteBtn) setMoreItem(deleteBtn, 'Delete', 'bragi-delete', order++)
+	return order
+}
+
+function configureEdgeMoreItems(menuEl: HTMLElement, startOrder: number): number {
+	let order = configureStandardMoreItems(menuEl, startOrder)
+	const removeLabelBtn = findRemoveLabelButton(menuEl)
+	if (removeLabelBtn) setMoreItem(removeLabelBtn, 'Remove label', 'bragi-delete', order++)
 	return order
 }
 
@@ -505,7 +522,7 @@ export function patchCanvasMenu(
 				const editLabelBtn = findBuiltinByLabel(menuEl, 'edit label')
 				const lineDirectionBtn = findBuiltinByLabel(menuEl, 'line direction') || findBuiltinByLabel(menuEl, 'arrow')
 				const markBtn = createMarkButton(menuEl, canvas, selectedNodes)
-				configureStandardMoreItems(menuEl, 0)
+				configureEdgeMoreItems(menuEl, 0)
 				addMoreButton(menuEl)
 				const moreBtn = menuEl.querySelector<HTMLElement>('.bragi-more')
 				reorderMenuButtons(menuEl, [
@@ -579,11 +596,14 @@ export function patchCanvasMenu(
 			}
 
 			if (isTextNode || isNoteNode) {
-				createMarkButton(menuEl, canvas, selectedNodes)
+				const editBtn = findBuiltinByLabel(menuEl, 'edit')
+				if (isTextNode) editBtn?.remove()
+				const markBtn = createMarkButton(menuEl, canvas, selectedNodes)
 				const edges = canvas.getEdgesForNode(selectedNode)
 				const hasIncoming = edges?.some(e => e.to.node.id === selectedNode.id)
+				let dupBtn: HTMLElement | null = null
 				if (onDuplicate && hasIncoming) {
-					const dupBtn = createMenuButton('bragi-duplicate', 'bragi-duplicate', 'Duplicate with connections', () => {
+					dupBtn = createMenuButton('bragi-duplicate', 'bragi-duplicate', 'Duplicate with connections', () => {
 						onDuplicate(selectedNode)
 					})
 					menuEl.appendChild(dupBtn)
@@ -593,21 +613,25 @@ export function patchCanvasMenu(
 				separator.className = 'canvas-menu-separator bragi-separator bragi-actions-separator bragi-menu-injected'
 				menuEl.appendChild(separator)
 
+				const generationButtons: HTMLElement[] = []
 				const imageBtn = createMenuButton('bragi-gen-image', 'bragi-gen-image', 'Generate image', () => {
 					onGenerateImage(selectedNode)
 				})
 				menuEl.appendChild(imageBtn)
+				generationButtons.push(imageBtn)
 
 				const videoBtn = createMenuButton('bragi-gen-video', 'bragi-gen-video', 'Generate video', () => {
 					onGenerateVideo(selectedNode)
 				})
 				menuEl.appendChild(videoBtn)
+				generationButtons.push(videoBtn)
 
 				if (onGenerateText) {
 					const textBtn = createMenuButton('bragi-gen-text', 'bragi-gen-text', 'Generate text', () => {
 						onGenerateText(selectedNode)
 					})
 					menuEl.appendChild(textBtn)
+					generationButtons.push(textBtn)
 				}
 
 				if (onGenerateAudio) {
@@ -615,10 +639,20 @@ export function patchCanvasMenu(
 						onGenerateAudio(selectedNode)
 					})
 					menuEl.appendChild(audioBtn)
+					generationButtons.push(audioBtn)
 				}
 
 				configureStandardMoreItems(menuEl, 0)
 				addMoreButton(menuEl)
+				const moreBtn = menuEl.querySelector<HTMLElement>('.bragi-more')
+				reorderMenuButtons(menuEl, [
+					...generationButtons,
+					separator,
+					isTextNode ? null : editBtn,
+					markBtn,
+					dupBtn,
+					moreBtn,
+				])
 				next.call(this)
 				return result
 			}
