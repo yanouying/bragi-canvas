@@ -245,3 +245,5 @@ export function removeAllTextRefs(): void {
 	activeDocument.querySelectorAll(`.${STRIP_CLASS}`).forEach(el => el.remove())
 	activeDocument.querySelectorAll(`.${NODE_HAS_TEXT_REFS_CLASS}`).forEach(el => el.classList.remove(NODE_HAS_TEXT_REFS_CLASS))
 }
+
+/* eslint-enable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */

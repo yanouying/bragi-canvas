@@ -541,3 +541,5 @@ function getIncomingEdgeData(canvas: Canvas, node: CanvasNode): Array<{
 function generateId(): string {
 	return Math.random().toString(36).substring(2, 18)
 }
+
+/* eslint-enable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */

@@ -83,3 +83,5 @@ function buildAudioInput(prompt: string, params: Record<string, unknown>, mode: 
 	}
 	return input
 }
+
+/* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */

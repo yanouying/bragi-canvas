@@ -218,3 +218,5 @@ function arrayBufferToBase64Url(buffer: ArrayBuffer): string {
 		.replace(/\//g, '_')
 		.replace(/=+$/, '')
 }
+
+/* eslint-enable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */

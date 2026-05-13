@@ -122,3 +122,5 @@ export class LegnextProvider implements ImageProvider {
 		throw new Error('Legnext: Generation timed out (5 minutes)')
 	}
 }
+
+/* eslint-enable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */

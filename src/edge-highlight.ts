@@ -68,3 +68,5 @@ export function stopEdgeHighlight(): void {
 	clearHighlights()
 	lastSelectedId = null
 }
+
+/* eslint-enable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */

@@ -99,3 +99,5 @@ function isEmptyLeaf(leaf: WorkspaceLeaf): boolean {
 	const viewType = leaf.view?.getViewType?.()
 	return viewType === 'empty'
 }
+
+/* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */

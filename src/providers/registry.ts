@@ -441,3 +441,5 @@ export function getProvider(id: string): ProviderSpec | undefined {
 export function getConfiguredProviderIds(settings: BragiSettings): string[] {
 	return PROVIDERS.filter(p => p.isConfigured(settings)).map(p => p.id)
 }
+
+/* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */

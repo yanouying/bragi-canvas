@@ -217,3 +217,5 @@ export function removeAllThumbnails(): void {
 	activeDocument.querySelectorAll(`.${NODE_HAS_REFS_CLASS}`).forEach(el => el.classList.remove(NODE_HAS_REFS_CLASS))
 	adjustedNodes.clear()
 }
+
+/* eslint-enable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */

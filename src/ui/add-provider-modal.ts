@@ -279,3 +279,5 @@ export class AddProviderModal extends Modal {
 		})
 	}
 }
+
+/* eslint-enable @typescript-eslint/no-unsafe-assignment */

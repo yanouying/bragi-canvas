@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- MCP request payloads and Canvas bridge data arrive as runtime-shaped JSON that is validated at the command boundary. */
 import * as http from 'http'
 import { randomUUID } from 'crypto'
 import { McpServer, type ToolCallback } from '@modelcontextprotocol/sdk/server/mcp.js'
@@ -1010,3 +1011,5 @@ function readJsonBody(req: http.IncomingMessage): Promise<unknown> {
 		req.on('error', reject)
 	})
 }
+
+/* eslint-enable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */

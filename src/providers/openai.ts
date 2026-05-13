@@ -149,3 +149,5 @@ export class OpenAIProvider implements ImageProvider {
 		return b64
 	}
 }
+
+/* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */

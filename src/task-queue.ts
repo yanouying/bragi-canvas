@@ -112,3 +112,5 @@ export class TaskQueue {
 		return this.tasks.length
 	}
 }
+
+/* eslint-enable @typescript-eslint/no-unsafe-argument */

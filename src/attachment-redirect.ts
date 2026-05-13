@@ -56,3 +56,5 @@ export function startAttachmentRedirect(app: App): () => void {
 		currentlyRedirected = false
 	}
 }
+
+/* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call */

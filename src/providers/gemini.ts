@@ -126,3 +126,5 @@ function getInlineData(part: Record<string, unknown>): GeminiInlineData | null {
 function isGeminiInlineData(value: unknown): value is GeminiInlineData {
 	return typeof value === 'object' && value !== null
 }
+
+/* eslint-enable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */

@@ -89,3 +89,5 @@ export class SeedreamProvider implements ImageProvider {
 		return { filePath }
 	}
 }
+
+/* eslint-enable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */

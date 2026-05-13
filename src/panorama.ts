@@ -316,3 +316,5 @@ export function openPanoramaViewer(app: App, canvas: Canvas, node: CanvasNode, o
 	}
 	new PanoramaViewerModal(app, canvas, node, filePath, outputDir).open()
 }
+
+/* eslint-enable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */

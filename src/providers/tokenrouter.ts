@@ -551,3 +551,5 @@ export class TokenRouterVideoProvider implements VideoProvider {
 		return filePath
 	}
 }
+
+/* eslint-enable @typescript-eslint/no-unsafe-assignment */

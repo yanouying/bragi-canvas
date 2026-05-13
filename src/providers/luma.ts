@@ -112,3 +112,5 @@ export class LumaProvider implements ImageProvider {
 		return url
 	}
 }
+
+/* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return */
