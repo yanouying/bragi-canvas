@@ -80,6 +80,21 @@ function fromBase64(data: string): ArrayBuffer {
 	return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
 }
 
+function downloadBlob(fileName: string, data: BlobPart, mimeType: string): void {
+	const blob = new Blob([data], { type: mimeType })
+	const url = URL.createObjectURL(blob)
+	const link = createEl('a')
+	link.href = url
+	link.download = fileName
+	link.classList.add('bragi-hidden-download-link')
+	activeDocument.body.appendChild(link)
+	link.click()
+	activeWindow.setTimeout(() => {
+		link.remove()
+		URL.revokeObjectURL(url)
+	}, 1000)
+}
+
 function safePackagePath(vaultPath: string, assetBase: string): string {
 	const rawRelative = vaultPath.startsWith(assetBase + '/')
 		? vaultPath.substring(assetBase.length + 1)
@@ -235,29 +250,14 @@ export async function exportCanvas(app: App, _settings: BragiSettings, canvas: C
 		}
 
 		packageData.assetCount = added
-		notice.setMessage('Writing package…')
+		notice.setMessage('Preparing package…')
 		const buffer = Buffer.from(JSON.stringify(packageData, null, 2), 'utf8')
-
-		// Save dialog
-		const result = await remote.dialog.showSaveDialog({
-			title: 'Export Bragi Canvas',
-			defaultPath: `${canvasName}.bragi`,
-			filters: [
-				{ name: 'Bragi Canvas Package', extensions: ['bragi'] },
-				{ name: 'All Files', extensions: ['*'] },
-			],
-		})
-
-		if (result.canceled || !result.filePath) {
-			notice.hide()
-			return
-		}
-
-		await fs.promises.writeFile(result.filePath, Buffer.from(buffer))
+		const fileName = `${canvasName}.bragi`
+		downloadBlob(fileName, buffer, 'application/octet-stream')
 
 		notice.hide()
 		const sizeMB = (buffer.byteLength / 1024 / 1024).toFixed(1)
-		new Notice(`Exported ${basename(result.filePath)} — ${sizeMB} MB, ${added} file${added === 1 ? '' : 's'}`)
+		new Notice(`Exported ${fileName} — ${sizeMB} MB, ${added} file${added === 1 ? '' : 's'}`)
 	} catch (err: unknown) {
 		notice.hide()
 		new Notice(`Export failed: ${err.message}`)

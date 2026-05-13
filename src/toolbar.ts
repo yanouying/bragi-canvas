@@ -1,6 +1,4 @@
 import { setIcon, setTooltip, Notice, App, Modal } from 'obsidian'
-import { remote } from 'electron'
-import * as fs from 'fs'
 import { around } from 'monkey-around'
 import type { Canvas, CanvasNode } from './types/canvas-internal'
 
@@ -13,24 +11,20 @@ async function downloadMediaFile(vaultPath: string, node: CanvasNode): Promise<v
 		const app = node.app
 		const adapter = app.vault.adapter
 		const fileName = vaultPath.split('/').pop() || 'download'
-		const ext = fileName.split('.').pop() || ''
 
-		// Read file from vault
 		const data = await adapter.readBinary(vaultPath)
-
-		// Use Electron's dialog to save
-		const result = await remote.dialog.showSaveDialog({
-			defaultPath: fileName,
-			filters: [
-				{ name: ext.toUpperCase(), extensions: [ext] },
-				{ name: 'All Files', extensions: ['*'] },
-			],
-		})
-
-		if (result.canceled || !result.filePath) return
-
-		await fs.promises.writeFile(result.filePath, Buffer.from(data))
-		new Notice(`Saved: ${result.filePath.split('/').pop()}`)
+		const url = URL.createObjectURL(new Blob([data], { type: guessMimeType(fileName) }))
+		const link = createEl('a')
+		link.href = url
+		link.download = fileName
+		link.classList.add('bragi-hidden-download-link')
+		activeDocument.body.appendChild(link)
+		link.click()
+		activeWindow.setTimeout(() => {
+			link.remove()
+			URL.revokeObjectURL(url)
+		}, 1000)
+		new Notice(`Download started: ${fileName}`)
 	} catch (err: unknown) {
 		// Fallback: create a download link
 		try {
@@ -47,6 +41,21 @@ async function downloadMediaFile(vaultPath: string, node: CanvasNode): Promise<v
 			new Notice(`Download failed: ${err.message}`)
 		}
 	}
+}
+
+function guessMimeType(fileName: string): string {
+	const extension = fileName.split('.').pop()?.toLowerCase() || ''
+	if (extension === 'png') return 'image/png'
+	if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg'
+	if (extension === 'webp') return 'image/webp'
+	if (extension === 'gif') return 'image/gif'
+	if (extension === 'mp4') return 'video/mp4'
+	if (extension === 'webm') return 'video/webm'
+	if (extension === 'mov') return 'video/quicktime'
+	if (extension === 'mp3') return 'audio/mpeg'
+	if (extension === 'wav') return 'audio/wav'
+	if (extension === 'flac') return 'audio/flac'
+	return 'application/octet-stream'
 }
 
 let menuUninstaller: (() => void) | null = null
