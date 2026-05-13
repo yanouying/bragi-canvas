@@ -113,4 +113,4 @@ export class TaskQueue {
 	}
 }
 
-/* eslint-enable @typescript-eslint/no-unsafe-argument */
+/* eslint-enable @typescript-eslint/no-unsafe-argument -- Resume strict linting after the runtime-shaped data boundary. */

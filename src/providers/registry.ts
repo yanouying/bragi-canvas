@@ -442,4 +442,4 @@ export function getConfiguredProviderIds(settings: BragiSettings): string[] {
 	return PROVIDERS.filter(p => p.isConfigured(settings)).map(p => p.id)
 }
 
-/* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
+/* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- Resume strict linting after the runtime-shaped data boundary. */

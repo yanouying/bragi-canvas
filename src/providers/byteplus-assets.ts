@@ -133,4 +133,4 @@ export async function waitForActive(creds: BytePlusAssetCreds, assetId: string):
 	throw new Error(`BytePlus asset timed out after ${POLL_TIMEOUT_MS / 1000}s`)
 }
 
-/* eslint-enable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
+/* eslint-enable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return -- Resume strict linting after the runtime-shaped data boundary. */

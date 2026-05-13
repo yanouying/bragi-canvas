@@ -57,4 +57,4 @@ export function startAttachmentRedirect(app: App): () => void {
 	}
 }
 
-/* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call */
+/* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- Resume strict linting after the runtime-shaped data boundary. */

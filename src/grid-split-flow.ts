@@ -103,4 +103,4 @@ export async function splitImageNodeIntoTiles(plugin: BragiCanvas, canvas: Canva
 	new Notice(`Split into ${tiles.length} tile${tiles.length === 1 ? '' : 's'}`)
 }
 
-/* eslint-enable @typescript-eslint/no-unsafe-assignment */
+/* eslint-enable @typescript-eslint/no-unsafe-assignment -- Resume strict linting after the runtime-shaped data boundary. */

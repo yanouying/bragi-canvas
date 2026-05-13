@@ -552,4 +552,4 @@ export class TokenRouterVideoProvider implements VideoProvider {
 	}
 }
 
-/* eslint-enable @typescript-eslint/no-unsafe-assignment */
+/* eslint-enable @typescript-eslint/no-unsafe-assignment -- Resume strict linting after the runtime-shaped data boundary. */

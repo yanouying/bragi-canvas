@@ -113,4 +113,4 @@ export class LumaProvider implements ImageProvider {
 	}
 }
 
-/* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return */
+/* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return -- Resume strict linting after the runtime-shaped data boundary. */
