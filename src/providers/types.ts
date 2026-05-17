@@ -57,9 +57,24 @@ export interface VoiceCloneResult {
 	previewUrl?: string
 }
 
+export interface VoiceDesignOptions {
+	modelId: string
+	voicePrompt: string
+	previewText: string
+	promptHash: string
+	voiceNamePrefix?: string
+}
+
+export interface VoiceDesignResult {
+	voiceId: string
+	name?: string
+	previewUrl?: string
+}
+
 export interface AudioProvider {
 	name: string
 	generateAudio(prompt: string, options: { mode: 'tts' | 'music' | 'sound-effect', modelId?: string, [k: string]: unknown }): Promise<GenerateAudioResult>
 	listVoices?(options?: ListVoicesOptions): Promise<VoiceOption[]>
 	cloneVoice?(options: VoiceCloneOptions): Promise<VoiceCloneResult>
+	designVoice?(options: VoiceDesignOptions): Promise<VoiceDesignResult>
 }

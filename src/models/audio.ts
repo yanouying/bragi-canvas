@@ -2,6 +2,10 @@ import type { ModelConfig, ModelParam } from './types'
 
 // ── TTS Models ──
 
+const QWEN_VOICE_BUILTIN_MODEL = 'qwen3-tts-instruct-flash'
+const QWEN_VOICE_REFERENCE_MODEL = 'qwen3-tts-vc-2026-01-22'
+const QWEN_VOICE_DESIGN_MODEL = 'qwen3-tts-vd-2026-01-26'
+
 function dashScopeVoiceParams(defaultVoice = ''): ModelParam[] {
 	return [
 		{
@@ -189,7 +193,7 @@ export const dashScopeCosyVoice35Plus: ModelConfig = {
 	},
 	modes: ['tts'],
 	params: dashScopeVoiceParams(),
-	voiceConfig: { builtin: false, clone: true },
+	voiceConfig: { builtin: false, clone: true, design: true },
 }
 
 export const dashScopeCosyVoice35Flash: ModelConfig = {
@@ -201,43 +205,29 @@ export const dashScopeCosyVoice35Flash: ModelConfig = {
 	},
 	modes: ['tts'],
 	params: dashScopeVoiceParams(),
-	voiceConfig: { builtin: false, clone: true },
+	voiceConfig: { builtin: false, clone: true, design: true },
 }
 
-export const dashScopeQwen3TTSInstructFlash: ModelConfig = {
-	id: 'dashscope-qwen3-tts-instruct-flash',
-	name: 'Qwen3 Instruct Flash',
+export const dashScopeQwenVoice: ModelConfig = {
+	id: 'dashscope-qwen-voice',
+	name: 'Qwen Voice',
 	type: 'audio',
 	supportedProviders: {
-		dashscope: { apiModelId: 'qwen3-tts-instruct-flash' },
+		dashscope: { apiModelId: QWEN_VOICE_BUILTIN_MODEL },
 	},
 	modes: ['tts'],
 	params: qwen3VoiceParams('Cherry', true),
-	voiceConfig: { builtin: true, clone: false },
-}
-
-export const dashScopeQwen3TTSFlash: ModelConfig = {
-	id: 'dashscope-qwen3-tts-flash',
-	name: 'Qwen3 Flash',
-	type: 'audio',
-	supportedProviders: {
-		dashscope: { apiModelId: 'qwen3-tts-flash' },
+	voiceConfig: {
+		builtin: true,
+		clone: true,
+		design: true,
+		modelIds: {
+			builtin: QWEN_VOICE_BUILTIN_MODEL,
+			reference: QWEN_VOICE_REFERENCE_MODEL,
+			design: QWEN_VOICE_DESIGN_MODEL,
+		},
+		sampleModelId: 'dashscope-qwen3-tts-instruct-flash',
 	},
-	modes: ['tts'],
-	params: qwen3VoiceParams(),
-	voiceConfig: { builtin: true, clone: false },
-}
-
-export const dashScopeQwen3TTSVC: ModelConfig = {
-	id: 'dashscope-qwen3-tts-vc',
-	name: 'Qwen3 VC',
-	type: 'audio',
-	supportedProviders: {
-		dashscope: { apiModelId: 'qwen3-tts-vc-2026-01-22' },
-	},
-	modes: ['tts'],
-	params: dashScopeVoiceParams(),
-	voiceConfig: { builtin: false, clone: true },
 }
 
 export const grokTTS: ModelConfig = {

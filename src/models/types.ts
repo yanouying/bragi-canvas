@@ -6,6 +6,7 @@ export type TextMode = 'text-to-text'
 export type AudioMode = 'tts' | 'music' | 'sound-effect'
 
 export type Mode = ImageMode | VideoMode | TextMode | AudioMode
+export type VoiceSourceMode = 'builtin' | 'reference' | 'design'
 
 export interface ParamOption {
 	label: string
@@ -49,5 +50,8 @@ export interface ModelConfig {
 	voiceConfig?: {
 		builtin: boolean
 		clone: boolean
+		design?: boolean
+		modelIds?: Partial<Record<VoiceSourceMode, string>>
+		sampleModelId?: string
 	}
 }

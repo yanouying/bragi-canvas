@@ -26,6 +26,7 @@ import { splitImageNodeIntoTiles } from './grid-split-flow'
 import { isSupportedLanguage, LanguageGateModal } from './ui/language-gate'
 import { installAlwaysNewTab } from './always-new-tab'
 import type { Canvas, CanvasNode } from './types/canvas-internal'
+import type { VoiceSourceMode } from './models/types'
 
 export default class BragiCanvas extends Plugin {
 	settings: BragiSettings = DEFAULT_SETTINGS
@@ -320,7 +321,10 @@ export default class BragiCanvas extends Plugin {
 		const upstreamPrompts = await getOrderedPrompts(canvas, node, this.app)
 
 		// Merge prompts: upstream prompts + panel prompt
-		const allPrompts = [...upstreamPrompts, prompt].filter(Boolean)
+		const voiceMode = selectedVoiceMode(result.params)
+		const allPrompts = model.type === 'audio' && voiceMode === 'design'
+			? [prompt].filter(Boolean)
+			: [...upstreamPrompts, prompt].filter(Boolean)
 		const finalPrompt = allPrompts.join('\n')
 
 		if (!finalPrompt) {
@@ -557,22 +561,34 @@ export default class BragiCanvas extends Plugin {
 					return
 				}
 				const audioParams: Record<string, unknown> = { ...params }
-				const wantsCustomVoice = audioParams.voiceMode === 'custom'
-					|| (!audioParams.voiceMode && model.voiceConfig?.clone && upstream.audios.length > 0)
-				if (mode === 'tts' && wantsCustomVoice) {
+				const voiceMode = selectedVoiceMode(audioParams)
+				const audioModelId = modelIdForVoiceMode(model, apiModelId, voiceMode)
+				let customVoiceRecord: CustomVoiceRecord | null = null
+				if (mode === 'tts' && voiceMode === 'reference') {
 					const refIndex = readVoiceRefAudioIndex(audioParams.voiceRefAudioIndex)
-					await applyUpstreamVoiceClone(this.app, canvas, provider, activeProvider, apiModelId, getOrderedAudios(canvas, node), refIndex, audioParams)
+					customVoiceRecord = await applyUpstreamVoiceReference(this.app, canvas, provider, activeProvider, audioModelId, getOrderedAudios(canvas, node), refIndex, audioParams)
+				} else if (mode === 'tts' && voiceMode === 'design') {
+					const promptIndex = readVoiceDesignTextIndex(audioParams.voiceDesignTextIndex)
+					customVoiceRecord = await applyVoiceDesign(provider, activeProvider, audioModelId, upstreamPrompts, promptIndex, finalPrompt, audioParams)
 				}
 				delete audioParams.voiceMode
 				delete audioParams.voiceRefAudioIndex
+				delete audioParams.voiceDesignTextIndex
 				delete audioParams.voiceLabel
 				const audioResult = await provider.generateAudio(finalPrompt, {
 					mode: mode as 'tts' | 'music' | 'sound-effect',
-					modelId: apiModelId,
+					modelId: audioModelId,
 					upstreamPrompts,
 					...audioParams,
 				})
 				replacePlaceholderWithFile(canvas, placeholder, audioResult.filePath, node)
+				if (customVoiceRecord) {
+					const outputNode = findFileNodeByPath(canvas, audioResult.filePath)
+					if (outputNode) {
+						upsertCustomVoiceRecord(outputNode, await customVoiceRecordForOutput(this.app, audioResult.filePath, customVoiceRecord))
+						await canvas.requestSave?.()
+					}
+				}
 				new Notice('Audio ready')
 			}
 		} catch (err: unknown) {
@@ -865,32 +881,46 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 	return btoa(binary)
 }
 
-interface VoiceCloneRecord {
+interface CustomVoiceRecord {
+	kind: 'clone' | 'design'
 	provider: string
 	region: string
 	modelId: string
-	sourceHash: string
-	sourcePath: string
 	voiceId: string
 	name?: string
 	previewUrl?: string
+	sourceHash?: string
+	sourcePath?: string
+	promptHash?: string
+	voicePrompt?: string
 	createdAt: number
 }
 
-function isVoiceCloneRecord(value: unknown): value is VoiceCloneRecord {
+function isCustomVoiceRecord(value: unknown): value is CustomVoiceRecord {
 	if (!value || typeof value !== 'object') return false
 	const record = value as Record<string, unknown>
-	return typeof record.provider === 'string'
+	if (record.kind !== 'clone' && record.kind !== 'design') return false
+	const baseValid = typeof record.provider === 'string'
 		&& typeof record.region === 'string'
 		&& typeof record.modelId === 'string'
-		&& typeof record.sourceHash === 'string'
-		&& typeof record.sourcePath === 'string'
 		&& typeof record.voiceId === 'string'
 		&& typeof record.createdAt === 'number'
+	if (!baseValid) return false
+	if (record.kind === 'clone') {
+		return typeof record.sourceHash === 'string' && typeof record.sourcePath === 'string'
+	}
+	if (record.kind === 'design') {
+		return typeof record.promptHash === 'string' && typeof record.voicePrompt === 'string'
+	}
+	return false
 }
 
 function providerSupportsVoiceClone(provider: AudioProvider): provider is AudioProvider & { cloneVoice: NonNullable<AudioProvider['cloneVoice']> } {
 	return typeof provider.cloneVoice === 'function'
+}
+
+function providerSupportsVoiceDesign(provider: AudioProvider): provider is AudioProvider & { designVoice: NonNullable<AudioProvider['designVoice']> } {
+	return typeof provider.designVoice === 'function'
 }
 
 function findFileNodeByPath(canvas: Canvas, filePath: string): CanvasNode | null {
@@ -901,25 +931,27 @@ function findFileNodeByPath(canvas: Canvas, filePath: string): CanvasNode | null
 	return null
 }
 
-function getVoiceCloneRecords(node: CanvasNode): VoiceCloneRecord[] {
+function getCustomVoiceRecords(node: CanvasNode): CustomVoiceRecord[] {
 	const data = node.getData() as Record<string, unknown>
-	const raw = Array.isArray(data.bragiVoiceClones) ? data.bragiVoiceClones : []
-	return raw.filter(isVoiceCloneRecord)
+	const raw = Array.isArray(data.bragiCustomVoices) ? data.bragiCustomVoices : []
+	return raw.filter(isCustomVoiceRecord)
 }
 
-function upsertVoiceCloneRecord(node: CanvasNode, record: VoiceCloneRecord): void {
+function upsertCustomVoiceRecord(node: CanvasNode, record: CustomVoiceRecord): void {
 	const data = node.getData() as Record<string, unknown>
-	const records = getVoiceCloneRecords(node)
+	const records = getCustomVoiceRecords(node)
 	const next = [
 		record,
 		...records.filter(item =>
 			item.provider !== record.provider
 			|| item.region !== record.region
 			|| item.modelId !== record.modelId
+			|| item.kind !== record.kind
 			|| item.sourceHash !== record.sourceHash
+			|| item.promptHash !== record.promptHash
 		),
 	]
-	node.setData({ ...data, bragiVoiceClones: next })
+	node.setData({ ...data, bragiCustomVoices: next })
 }
 
 async function sha256Hex(buffer: ArrayBuffer): Promise<string> {
@@ -927,7 +959,52 @@ async function sha256Hex(buffer: ArrayBuffer): Promise<string> {
 	return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
-async function applyUpstreamVoiceClone(
+async function sha256Text(text: string): Promise<string> {
+	const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+	return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
+function selectedVoiceMode(params: Record<string, unknown>): VoiceSourceMode {
+	if (params.voiceMode === 'reference') return 'reference'
+	if (params.voiceMode === 'design') return 'design'
+	return 'builtin'
+}
+
+function modelIdForVoiceMode(model: PanelResult['model'], defaultModelId: string, voiceMode: VoiceSourceMode): string {
+	return model.voiceConfig?.modelIds?.[voiceMode] || defaultModelId
+}
+
+function reusableVoiceRecord(
+	node: CanvasNode,
+	activeProvider: string,
+	region: string,
+	modelId: string,
+	sourceHash: string,
+): CustomVoiceRecord | null {
+	return getCustomVoiceRecords(node).find(record =>
+		record.provider === activeProvider
+		&& record.region === region
+		&& record.modelId === modelId
+		&& (record.kind === 'design' || record.sourceHash === sourceHash)
+	) || null
+}
+
+async function customVoiceRecordForOutput(
+	app: BragiCanvas['app'],
+	filePath: string,
+	record: CustomVoiceRecord,
+): Promise<CustomVoiceRecord> {
+	if (record.kind !== 'clone') return record
+	const binary = await app.vault.adapter.readBinary(filePath)
+	return {
+		...record,
+		sourcePath: filePath,
+		sourceHash: await sha256Hex(binary),
+		createdAt: Date.now(),
+	}
+}
+
+async function applyUpstreamVoiceReference(
 	app: BragiCanvas['app'],
 	canvas: Canvas,
 	provider: AudioProvider,
@@ -936,13 +1013,13 @@ async function applyUpstreamVoiceClone(
 	upstreamAudios: string[],
 	voiceRefAudioIndex: number,
 	audioParams: Record<string, unknown>,
-): Promise<void> {
+): Promise<CustomVoiceRecord> {
 	const audioPaths = [...new Set(upstreamAudios)]
 	if (audioPaths.length === 0) {
-		throw new Error('Voice cloning needs an upstream audio file.')
+		throw new Error('Voice reference needs an upstream audio file.')
 	}
 	if (activeProvider !== 'dashscope' || !providerSupportsVoiceClone(provider)) {
-		throw new Error('Voice cloning is currently available with DashScope TTS models.')
+		throw new Error('Voice reference is currently available with DashScope TTS models.')
 	}
 
 	if (voiceRefAudioIndex < 0 || voiceRefAudioIndex >= audioPaths.length) {
@@ -956,20 +1033,15 @@ async function applyUpstreamVoiceClone(
 	const binary = await app.vault.adapter.readBinary(sourcePath)
 	const sourceHash = await sha256Hex(binary)
 	const region = 'cn-beijing'
-	const existing = getVoiceCloneRecords(audioNode).find(record =>
-		record.provider === activeProvider
-		&& record.region === region
-		&& record.modelId === modelId
-		&& record.sourceHash === sourceHash
-	)
+	const existing = reusableVoiceRecord(audioNode, activeProvider, region, modelId, sourceHash)
 
 	if (existing) {
 		audioParams.voice = existing.voiceId
 		audioParams.voiceLabel = existing.name || existing.voiceId
-		return
+		return existing
 	}
 
-	new Notice('Creating voice clone...')
+	new Notice('Creating voice reference...')
 	const ext = getFileExtension(sourcePath, 'mp3')
 	const audioUrl = await uploadRef(undefined, binary, `voice.${ext}`, audioMimeType(sourcePath))
 	const clone = await provider.cloneVoice({
@@ -979,7 +1051,8 @@ async function applyUpstreamVoiceClone(
 		sourcePath,
 	})
 
-	const record: VoiceCloneRecord = {
+	const record: CustomVoiceRecord = {
+		kind: 'clone',
 		provider: activeProvider,
 		region,
 		modelId,
@@ -990,13 +1063,69 @@ async function applyUpstreamVoiceClone(
 		previewUrl: clone.previewUrl,
 		createdAt: Date.now(),
 	}
-	upsertVoiceCloneRecord(audioNode, record)
+	upsertCustomVoiceRecord(audioNode, record)
 	await canvas.requestSave?.()
 	audioParams.voice = clone.voiceId
 	audioParams.voiceLabel = clone.name || clone.voiceId
+	return record
+}
+
+async function applyVoiceDesign(
+	provider: AudioProvider,
+	activeProvider: string,
+	modelId: string,
+	upstreamPrompts: string[],
+	voiceDesignTextIndex: number,
+	previewText: string,
+	audioParams: Record<string, unknown>,
+): Promise<CustomVoiceRecord> {
+	if (activeProvider !== 'dashscope' || !providerSupportsVoiceDesign(provider)) {
+		throw new Error('Voice design is currently available with DashScope TTS models.')
+	}
+	if (!previewText.trim()) {
+		throw new Error('Voice design needs text to read from the current node.')
+	}
+	if (voiceDesignTextIndex < 0 || voiceDesignTextIndex >= upstreamPrompts.length) {
+		throw new Error('Selected voice design prompt is no longer connected.')
+	}
+	const voicePrompt = upstreamPrompts[voiceDesignTextIndex]?.trim()
+	if (!voicePrompt) throw new Error('Voice design prompt is empty.')
+
+	new Notice('Designing voice...')
+	const promptHash = await sha256Text(voicePrompt)
+	const design = await provider.designVoice({
+		modelId,
+		voicePrompt,
+		previewText,
+		promptHash,
+	})
+	const record: CustomVoiceRecord = {
+		kind: 'design',
+		provider: activeProvider,
+		region: 'cn-beijing',
+		modelId,
+		promptHash,
+		voicePrompt,
+		voiceId: design.voiceId,
+		name: design.name,
+		previewUrl: design.previewUrl,
+		createdAt: Date.now(),
+	}
+	audioParams.voice = design.voiceId
+	audioParams.voiceLabel = design.name || design.voiceId
+	return record
 }
 
 function readVoiceRefAudioIndex(value: unknown): number {
+	const parsed = typeof value === 'number'
+		? value
+		: typeof value === 'string'
+			? parseInt(value, 10)
+			: 0
+	return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0
+}
+
+function readVoiceDesignTextIndex(value: unknown): number {
 	const parsed = typeof value === 'number'
 		? value
 		: typeof value === 'string'

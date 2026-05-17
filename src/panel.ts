@@ -1,10 +1,11 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Obsidian Canvas internals and provider payloads are runtime-shaped data that this plugin narrows at use sites. */
 import { Notice, App } from 'obsidian'
-import type { ModelConfig, GenerationType, Mode } from './models/types'
+import type { ModelConfig, GenerationType, Mode, VoiceSourceMode } from './models/types'
 import { getEnabledModels, getActiveProvider } from './models/index'
 import { getConfiguredProviderIds } from './providers/registry'
 import { getUpstreamInputs } from './edge-parser'
 import { getOrderedAudios } from './audio-refs'
+import { getOrderedTextRefs } from './text-refs'
 import type { BragiSettings } from './settings'
 import type { CanvasNode } from './types/canvas-internal'
 import { VoicePickerModal } from './ui/voice-picker-modal'
@@ -37,7 +38,7 @@ const MODE_LABELS: Record<string, string> = {
 }
 
 type LastSelectionKey = 'lastImage' | 'lastVideo' | 'lastAudio' | 'lastText'
-type VoiceMode = 'builtin' | 'custom'
+type VoiceMode = VoiceSourceMode
 type AudioIntent = 'speech' | 'music'
 
 function lastSelectionKey(type: GenerationType): LastSelectionKey {
@@ -81,16 +82,26 @@ function catalogProviderFor(_model: ModelConfig, activeProvider: string): string
 	return activeProvider
 }
 
-function voiceConfigFor(model: ModelConfig | null): { builtin: boolean; clone: boolean } {
-	return model?.voiceConfig || { builtin: true, clone: false }
+function voiceConfigFor(model: ModelConfig | null): { builtin: boolean; clone: boolean; design: boolean } {
+	return {
+		builtin: model?.voiceConfig?.builtin ?? true,
+		clone: model?.voiceConfig?.clone ?? false,
+		design: model?.voiceConfig?.design ?? false,
+	}
 }
 
 function audioOrdinal(index: number): string {
 	return `Audio ${index + 1}`
 }
 
+function textOrdinal(index: number): string {
+	return `Text ${index + 1}`
+}
+
 function selectedVoiceMode(params: Record<string, string | number>): VoiceMode {
-	return params.voiceMode === 'custom' ? 'custom' : 'builtin'
+	if (params.voiceMode === 'reference') return 'reference'
+	if (params.voiceMode === 'design') return 'design'
+	return 'builtin'
 }
 
 function audioIntentForModel(model: ModelConfig): AudioIntent {
@@ -106,7 +117,9 @@ function supportsAudioIntent(model: ModelConfig, intent: AudioIntent): boolean {
 function supportsVoiceSource(model: ModelConfig, source: VoiceMode): boolean {
 	const config = voiceConfigFor(model)
 	if (!model.modes.includes('tts')) return false
-	return source === 'custom' ? config.clone : config.builtin
+	if (source === 'reference') return config.clone
+	if (source === 'design') return config.design
+	return config.builtin
 }
 
 /**
@@ -265,17 +278,19 @@ export function showGenerateBar(
 	let upstreamImageCount = 0
 	let upstreamVideoCount = 0
 	let orderedAudios: string[] = []
+	let orderedTextRefCount = 0
 	const canvas = node.canvas
 	if (canvas) {
 		const upstream = getUpstreamInputs(canvas, node)
 		upstreamImageCount = [...new Set(upstream.images)].length
 		upstreamVideoCount = upstream.videos.length
 		orderedAudios = getOrderedAudios(canvas, node)
+		orderedTextRefCount = getOrderedTextRefs(canvas, node).length
 	}
 
 	let selectedMode: Mode | null = null
 	let audioIntent: AudioIntent = 'speech'
-	let audioVoiceSource: VoiceMode = orderedAudios.length > 0 ? 'custom' : 'builtin'
+	let audioVoiceSource: VoiceMode = orderedAudios.length > 0 ? 'reference' : 'builtin'
 	let audioControlsInitialized = false
 
 	// ── Define functions (all DOM elements exist now) ──
@@ -302,22 +317,26 @@ export function showGenerateBar(
 	function normalizeAudioControls() {
 		if (currentType !== 'audio') return
 		const speechBuiltin = audioModelsFor('speech', 'builtin')
-		const speechCustom = orderedAudios.length > 0 ? audioModelsFor('speech', 'custom') : []
+		const speechReference = orderedAudios.length > 0 ? audioModelsFor('speech', 'reference') : []
+		const speechDesign = orderedTextRefCount > 0 ? audioModelsFor('speech', 'design') : []
 		const musicModels = audioModelsFor('music', audioVoiceSource)
 
 		if (audioIntent === 'music') {
-			if (musicModels.length === 0 && (speechBuiltin.length > 0 || speechCustom.length > 0)) {
+			if (musicModels.length === 0 && (speechBuiltin.length > 0 || speechReference.length > 0 || speechDesign.length > 0)) {
 				audioIntent = 'speech'
-				audioVoiceSource = speechCustom.length > 0 ? 'custom' : 'builtin'
+				audioVoiceSource = speechReference.length > 0 ? 'reference' : speechBuiltin.length > 0 ? 'builtin' : 'design'
 			}
 			return
 		}
 
-		if (audioVoiceSource === 'custom' && speechCustom.length === 0) {
-			audioVoiceSource = speechBuiltin.length > 0 ? 'builtin' : 'custom'
+		if (audioVoiceSource === 'reference' && speechReference.length === 0) {
+			audioVoiceSource = speechBuiltin.length > 0 ? 'builtin' : speechDesign.length > 0 ? 'design' : 'reference'
 		}
-		if (audioVoiceSource === 'builtin' && speechBuiltin.length === 0 && speechCustom.length > 0) {
-			audioVoiceSource = 'custom'
+		if (audioVoiceSource === 'design' && speechDesign.length === 0) {
+			audioVoiceSource = speechBuiltin.length > 0 ? 'builtin' : speechReference.length > 0 ? 'reference' : 'design'
+		}
+		if (audioVoiceSource === 'builtin' && speechBuiltin.length === 0) {
+			audioVoiceSource = speechReference.length > 0 ? 'reference' : speechDesign.length > 0 ? 'design' : 'builtin'
 		}
 		if (audioModelsFor('speech', audioVoiceSource).length === 0 && musicModels.length > 0) {
 			audioIntent = 'music'
@@ -334,7 +353,7 @@ export function showGenerateBar(
 			audioIntent = 'music'
 		} else {
 			audioIntent = 'speech'
-			audioVoiceSource = orderedAudios.length > 0 ? 'custom' : 'builtin'
+			audioVoiceSource = orderedAudios.length > 0 ? 'reference' : 'builtin'
 		}
 		normalizeAudioControls()
 		audioControlsInitialized = true
@@ -356,7 +375,9 @@ export function showGenerateBar(
 			opt.value = value
 			opt.textContent = label
 			opt.disabled = value === 'speech'
-				? audioModelsFor('speech', 'builtin').length === 0 && (orderedAudios.length === 0 || audioModelsFor('speech', 'custom').length === 0)
+				? audioModelsFor('speech', 'builtin').length === 0
+					&& (orderedAudios.length === 0 || audioModelsFor('speech', 'reference').length === 0)
+					&& (orderedTextRefCount === 0 || audioModelsFor('speech', 'design').length === 0)
 				: audioModelsFor('music', audioVoiceSource).length === 0
 			audioIntentSelect.appendChild(opt)
 		}
@@ -377,10 +398,17 @@ export function showGenerateBar(
 		audioVoiceSourceSelect.appendChild(builtin)
 
 		const custom = createEl('option')
-		custom.value = 'custom'
-		custom.textContent = 'Custom'
-		custom.disabled = orderedAudios.length === 0 || audioModelsFor('speech', 'custom').length === 0
+		custom.value = 'reference'
+		custom.textContent = 'Voice ref'
+		custom.disabled = orderedAudios.length === 0 || audioModelsFor('speech', 'reference').length === 0
 		audioVoiceSourceSelect.appendChild(custom)
+
+		const design = createEl('option')
+		design.value = 'design'
+		design.textContent = 'Design'
+		design.disabled = orderedTextRefCount === 0 || audioModelsFor('speech', 'design').length === 0
+		audioVoiceSourceSelect.appendChild(design)
+
 		audioVoiceSourceSelect.value = audioVoiceSource
 		resizeAudioVoiceSource()
 	}
@@ -427,22 +455,28 @@ export function showGenerateBar(
 
 	function applyInitialVoiceModeDefaults() {
 		const config = voiceConfigFor(selectedModel)
-		if (!selectedModel || selectedModel.type !== 'audio' || !config.clone) {
+		if (!selectedModel || selectedModel.type !== 'audio' || (!config.clone && !config.design)) {
 			delete paramValues.voiceMode
 			delete paramValues.voiceRefAudioIndex
+			delete paramValues.voiceDesignTextIndex
 			return
 		}
 		paramValues.voiceMode = currentType === 'audio' && audioIntent === 'speech'
 			? audioVoiceSource
-			: orderedAudios.length > 0 ? 'custom' : (config.builtin ? 'builtin' : 'custom')
+			: orderedAudios.length > 0 ? 'reference' : orderedTextRefCount > 0 && config.design ? 'design' : (config.builtin ? 'builtin' : 'reference')
 		const rawIndex = typeof paramValues.voiceRefAudioIndex === 'number'
 			? paramValues.voiceRefAudioIndex
 			: parseInt(String(paramValues.voiceRefAudioIndex ?? '0'), 10)
 		const maxIndex = Math.max(0, orderedAudios.length - 1)
 		paramValues.voiceRefAudioIndex = Number.isFinite(rawIndex) ? Math.min(Math.max(rawIndex, 0), maxIndex) : 0
+		const rawDesignIndex = typeof paramValues.voiceDesignTextIndex === 'number'
+			? paramValues.voiceDesignTextIndex
+			: parseInt(String(paramValues.voiceDesignTextIndex ?? '0'), 10)
+		const maxDesignIndex = Math.max(0, orderedTextRefCount - 1)
+		paramValues.voiceDesignTextIndex = Number.isFinite(rawDesignIndex) ? Math.min(Math.max(rawDesignIndex, 0), maxDesignIndex) : 0
 	}
 
-	function renderVoiceModeControl(config: { builtin: boolean; clone: boolean }) {
+	function renderVoiceModeControl(config: { builtin: boolean; clone: boolean; design: boolean }) {
 		const select = createEl('select')
 		select.className = 'bragi-bar-select'
 		select.title = 'Voice mode'
@@ -454,13 +488,19 @@ export function showGenerateBar(
 		select.appendChild(builtin)
 
 		const custom = createEl('option')
-		custom.value = 'custom'
-		custom.textContent = 'Custom'
-		custom.disabled = orderedAudios.length === 0
+		custom.value = 'reference'
+		custom.textContent = 'Voice ref'
+		custom.disabled = !config.clone || orderedAudios.length === 0
 		select.appendChild(custom)
 
-		select.value = String(paramValues.voiceMode || (config.builtin ? 'builtin' : 'custom'))
-		select.disabled = (!config.builtin && orderedAudios.length === 0)
+		const design = createEl('option')
+		design.value = 'design'
+		design.textContent = 'Design'
+		design.disabled = !config.design || orderedTextRefCount === 0
+		select.appendChild(design)
+
+		select.value = String(paramValues.voiceMode || (config.builtin ? 'builtin' : config.clone ? 'reference' : 'design'))
+		select.disabled = (!config.builtin && orderedAudios.length === 0 && (!config.design || orderedTextRefCount === 0))
 		select.addEventListener('change', () => {
 			paramValues.voiceMode = select.value
 			rebuildParams()
@@ -503,6 +543,39 @@ export function showGenerateBar(
 		autoSizeSelect(select)
 	}
 
+	function renderVoiceDesignPromptSelect() {
+		const select = createEl('select')
+		select.className = 'bragi-bar-select'
+		select.title = 'Voice design prompt'
+		if (orderedTextRefCount === 0) {
+			const opt = createEl('option')
+			opt.value = '0'
+			opt.textContent = 'Connect text'
+			select.appendChild(opt)
+			select.disabled = true
+			paramValues.voiceDesignTextIndex = 0
+		} else {
+			for (let i = 0; i < orderedTextRefCount; i++) {
+				const opt = createEl('option')
+				opt.value = String(i)
+				opt.textContent = textOrdinal(i)
+				select.appendChild(opt)
+			}
+			const current = Math.min(
+				Math.max(parseInt(String(paramValues.voiceDesignTextIndex ?? '0'), 10) || 0, 0),
+				orderedTextRefCount - 1,
+			)
+			paramValues.voiceDesignTextIndex = current
+			select.value = String(current)
+			select.addEventListener('change', () => {
+				paramValues.voiceDesignTextIndex = parseInt(select.value, 10) || 0
+				updateRunState()
+			})
+		}
+		paramsEl.appendChild(select)
+		autoSizeSelect(select)
+	}
+
 	function rebuildParams() {
 		paramsEl.innerHTML = ''
 		if (!selectedModel) return
@@ -518,28 +591,36 @@ export function showGenerateBar(
 
 				if (param.id === 'voice') {
 					const config = voiceConfigFor(selectedModel)
-					if (config.clone) {
+					if (config.clone || config.design) {
 						applyInitialVoiceModeDefaults()
 						if (currentType === 'audio' && audioIntent === 'speech') {
-							if (audioVoiceSource === 'custom') {
+							if (audioVoiceSource === 'reference') {
 								renderVoiceReferenceSelect()
+								continue
+							}
+							if (audioVoiceSource === 'design') {
+								renderVoiceDesignPromptSelect()
 								continue
 							}
 						} else {
 							renderVoiceModeControl(config)
 						}
-						if (selectedVoiceMode(paramValues) === 'custom') {
+						if (selectedVoiceMode(paramValues) === 'reference') {
 							renderVoiceReferenceSelect()
+							continue
+						}
+						if (selectedVoiceMode(paramValues) === 'design') {
+							renderVoiceDesignPromptSelect()
 							continue
 						}
 					}
 					const button = createEl('button')
 					button.className = 'bragi-bar-voice-btn'
-						button.title = param.label
-						button.disabled = config.clone && !config.builtin
-						const updateLabel = () => {
-							button.textContent = voiceDisplayLabel(paramValues, effectiveOptions, param.default)
-						}
+					button.title = param.label
+					button.disabled = (config.clone || config.design) && !config.builtin
+					const updateLabel = () => {
+						button.textContent = voiceDisplayLabel(paramValues, effectiveOptions, param.default)
+					}
 					updateLabel()
 					button.addEventListener('click', () => {
 						if (!selectedModel) return
@@ -554,7 +635,7 @@ export function showGenerateBar(
 							currentVoice: String(paramValues[param.id] ?? ''),
 							currentVoiceLabel: typeof paramValues.voiceLabel === 'string' ? paramValues.voiceLabel : '',
 							staticOptions: effectiveOptions,
-							voiceSource: selectedVoiceMode(paramValues) === 'custom' ? 'custom' : 'builtin',
+							voiceSource: 'builtin',
 							onSelect: (voice) => {
 								paramValues[param.id] = voice.id
 								paramValues.voiceLabel = voice.name || voice.id
@@ -722,15 +803,20 @@ export function showGenerateBar(
 		}
 
 		const voiceConfig = voiceConfigFor(selectedModel)
-		if (selectedModel?.type === 'audio' && selectedMode === 'tts' && voiceConfig.clone) {
-			if (selectedVoiceMode(paramValues) === 'custom') {
+		if (selectedModel?.type === 'audio' && selectedMode === 'tts' && (voiceConfig.clone || voiceConfig.design)) {
+			if (selectedVoiceMode(paramValues) === 'reference') {
 				if (orderedAudios.length === 0) {
 					disabled = true
-					title = 'Connect an upstream audio node to use a custom voice'
+					title = 'Connect an upstream audio node to use a voice reference'
+				}
+			} else if (selectedVoiceMode(paramValues) === 'design') {
+				if (orderedTextRefCount === 0) {
+					disabled = true
+					title = 'Connect an upstream text node to design a voice'
 				}
 			} else if (!voiceConfig.builtin) {
 				disabled = true
-				title = 'This model requires a custom voice. Connect an upstream audio node.'
+				title = 'Choose voice ref or design.'
 			}
 		}
 
@@ -744,7 +830,10 @@ export function showGenerateBar(
 
 	audioIntentSelect.addEventListener('change', () => {
 		audioIntent = audioIntentSelect.value === 'music' ? 'music' : 'speech'
-		if (audioIntent === 'speech' && audioVoiceSource === 'custom' && orderedAudios.length === 0) {
+		if (audioIntent === 'speech' && audioVoiceSource === 'reference' && orderedAudios.length === 0) {
+			audioVoiceSource = 'builtin'
+		}
+		if (audioIntent === 'speech' && audioVoiceSource === 'design' && orderedTextRefCount === 0) {
 			audioVoiceSource = 'builtin'
 		}
 		savedParams = null
@@ -753,7 +842,11 @@ export function showGenerateBar(
 	})
 
 	audioVoiceSourceSelect.addEventListener('change', () => {
-		audioVoiceSource = audioVoiceSourceSelect.value === 'custom' ? 'custom' : 'builtin'
+		audioVoiceSource = audioVoiceSourceSelect.value === 'reference'
+			? 'reference'
+			: audioVoiceSourceSelect.value === 'design'
+				? 'design'
+				: 'builtin'
 		paramValues.voiceMode = audioVoiceSource
 		savedParams = null
 		rebuildModelList()
@@ -1027,14 +1120,14 @@ export function showBatchGenerateBar(
 				if (!effectiveOptions.some(o => o.value === currentValue) && param.id !== 'voice') paramValues[param.id] = param.default
 
 				if (param.id === 'voice') {
-					const config = voiceConfigFor(selectedModel)
-					const button = createEl('button')
-					button.className = 'bragi-bar-voice-btn'
-					button.title = param.label
-						button.disabled = config.clone && !config.builtin
+						const config = voiceConfigFor(selectedModel)
+						const button = createEl('button')
+						button.className = 'bragi-bar-voice-btn'
+						button.title = param.label
+						button.disabled = (config.clone || config.design) && !config.builtin
 						const updateLabel = () => {
-							button.textContent = config.clone && !config.builtin
-								? 'Connect audio'
+							button.textContent = (config.clone || config.design) && !config.builtin
+								? 'Single node only'
 								: voiceDisplayLabel(paramValues, effectiveOptions, param.default)
 						}
 					updateLabel()
@@ -1052,7 +1145,7 @@ export function showBatchGenerateBar(
 							currentVoice: String(paramValues[param.id] ?? ''),
 							currentVoiceLabel: typeof paramValues.voiceLabel === 'string' ? paramValues.voiceLabel : '',
 							staticOptions: effectiveOptions,
-							voiceSource: selectedVoiceMode(paramValues) === 'custom' ? 'custom' : 'builtin',
+							voiceSource: 'builtin',
 							onSelect: (voice) => {
 								paramValues[param.id] = voice.id
 								paramValues.voiceLabel = voice.name || voice.id
@@ -1132,9 +1225,9 @@ export function showBatchGenerateBar(
 
 	function updateRunState() {
 		const config = voiceConfigFor(selectedModel)
-		const disabled = !!(selectedModel?.type === 'audio' && selectedMode === 'tts' && config.clone && !config.builtin)
+		const disabled = !!(selectedModel?.type === 'audio' && selectedMode === 'tts' && (config.clone || config.design) && !config.builtin)
 		runBtn.disabled = disabled
-		runBtn.title = disabled ? 'This model requires an upstream audio reference. Use a single-node generate flow.' : ''
+		runBtn.title = disabled ? 'This model requires a single-node voice source.' : ''
 		runBtn.style.opacity = disabled ? '0.4' : '1'
 		runBtn.style.cursor = disabled ? 'not-allowed' : 'pointer'
 	}

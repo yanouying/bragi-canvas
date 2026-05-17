@@ -6,6 +6,8 @@ import type {
 	ListVoicesOptions,
 	VoiceCloneOptions,
 	VoiceCloneResult,
+	VoiceDesignOptions,
+	VoiceDesignResult,
 	VoiceOption,
 } from './types'
 import { optionalStringParam, stringParam } from './params'
@@ -101,6 +103,20 @@ function extractVoiceId(json: unknown, qwen: boolean): string | null {
 		return getStringAt(json, ['output', 'voice']) || getStringAt(json, ['voice'])
 	}
 	return getStringAt(json, ['output', 'voice_id']) || getStringAt(json, ['voice_id'])
+}
+
+function extractPreviewAudio(json: unknown): string | null {
+	const paths = [
+		['output', 'preview_audio', 'url'],
+		['output', 'preview_audio', 'public_url'],
+		['preview_audio', 'url'],
+		['preview_audio', 'public_url'],
+	]
+	for (const path of paths) {
+		const value = getStringAt(json, path)
+		if (value && /^https?:\/\//i.test(value)) return value
+	}
+	return null
 }
 
 function isQwenModel(modelId: string): boolean {
@@ -235,7 +251,6 @@ function builtinVoicesForModel(modelId: string): VoiceOption[] {
 		return []
 	}
 	if (modelId === 'qwen3-tts-instruct-flash') return qwen3Voices.filter(voice => !qwen3InstructUnsupportedVoices.has(voice.id))
-	if (modelId === 'qwen3-tts-flash') return qwen3Voices
 	return []
 }
 
@@ -368,6 +383,56 @@ export class DashScopeAudioProvider implements AudioProvider {
 		return {
 			voiceId,
 			name: voiceId,
+		}
+	}
+
+	async designVoice(options: VoiceDesignOptions): Promise<VoiceDesignResult> {
+		const modelId = options.modelId
+		const qwen = isQwenModel(modelId)
+		const input: UnknownRecord = qwen
+			? {
+				action: 'create',
+				target_model: modelId,
+				preferred_name: sanitizeQwenName(options.voiceNamePrefix || options.promptHash),
+				voice_prompt: options.voicePrompt,
+				preview_text: options.previewText,
+			}
+			: {
+				action: 'create_voice',
+				target_model: modelId,
+				prefix: sanitizeCosyPrefix(options.voiceNamePrefix || options.promptHash),
+				voice_prompt: options.voicePrompt,
+				preview_text: options.previewText,
+			}
+
+		const resp = await requestUrl({
+			url: CUSTOMIZATION_URL,
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${this.apiKey}`,
+			},
+			body: JSON.stringify({
+				model: qwen ? 'qwen-voice-design' : 'voice-enrollment',
+				input,
+				parameters: {
+					sample_rate: 24000,
+					response_format: 'wav',
+				},
+			}),
+			throw: false,
+		})
+
+		if (isInvalidApiKeyResponse(resp)) throw new Error(`DashScope auth: ${parseErr(resp) || 'invalid API key.'}`)
+		if (resp.status >= 400) throw new Error(`DashScope voice design: ${parseErr(resp)}`)
+
+		const payload: unknown = resp.json
+		const voiceId = extractVoiceId(payload, qwen)
+		if (!voiceId) throw new Error(`DashScope voice design: no voice id in response - ${safePayloadSnippet(payload)}`)
+		return {
+			voiceId,
+			name: voiceId,
+			previewUrl: extractPreviewAudio(payload) || undefined,
 		}
 	}
 

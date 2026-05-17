@@ -498,9 +498,9 @@ export class BragiMcpServer {
 				if (!prompt) throw new Error('Node contains no prompt text')
 
 				// Resolve params with defaults
-				const resolvedParams: Record<string, string | number> = {}
+				const resolvedParams: Record<string, string | number> = { ...(params || {}) }
 				for (const p of model.params) {
-					resolvedParams[p.id] = params?.[p.id] ?? p.default
+					resolvedParams[p.id] = resolvedParams[p.id] ?? p.default
 				}
 
 				const selectedMode = (mode as Mode) || model.modes[0] || null

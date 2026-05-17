@@ -111,7 +111,7 @@ export class VoicePickerModal extends Modal {
 		const source = this.opts.voiceSource || 'builtin'
 		if (source !== 'custom') {
 			try {
-				const publicVoices = await listPublicVoiceSamples(this.opts.model.id)
+				const publicVoices = await listPublicVoiceSamples(this.opts.model.voiceConfig?.sampleModelId || this.opts.model.id)
 				if (publicVoices.length > 0) return publicVoices
 			} catch {
 				// Public samples are optional; provider/static voices remain valid fallbacks.
