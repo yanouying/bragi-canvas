@@ -5,24 +5,14 @@ import { requestUrl } from 'obsidian'
 import { stringParam } from './params'
 
 /**
- * APIMart GPT Image 2 provider.
- * Docs:
- *   Non-official (reverse-engineered, cheap): https://docs.apimart.ai/cn/api-reference/images/gpt-image-2/generation
- *   Official (OpenAI passthrough, supports quality + mask): https://docs.apimart.ai/cn/api-reference/images/gpt-image-2/official
+ * APIMart image provider.
  *
- * Both channels share the same async flow:
+ * APIMart image models share the same async flow:
  *   1. POST /v1/images/generations → { data: [{ task_id, status }] }
  *   2. GET  /v1/tasks/{task_id}    → polls; on "completed" returns result.images[0].url[0]
  *   3. Download that URL and write to the vault.
- *
- * ─── Channel toggle (flip this constant to switch) ──────────────────────
- * Non-official: 'gpt-image-2'            — cheap, fast, no quality/mask
- * Official:     'gpt-image-2-official'   — passthrough to OpenAI, supports quality
  */
-// const APIMART_MODEL = 'gpt-image-2-official'  // ← uncomment (and comment the line below) to use the official channel
-const APIMART_MODEL = 'gpt-image-2'
-
-const USE_OFFICIAL = APIMART_MODEL === 'gpt-image-2-official'
+const DEFAULT_MODEL = 'gpt-image-2'
 
 const API_BASE = 'https://api.apimart.ai/v1'
 const POLL_INTERVAL_MS = 3000
@@ -33,8 +23,18 @@ async function sleep(ms: number): Promise<void> {
 	return new Promise(r => window.setTimeout(r, ms))
 }
 
+function stringifyDetail(value: unknown): string {
+	if (typeof value === 'string') return value
+	if (value == null) return ''
+	try {
+		return JSON.stringify(value)
+	} catch {
+		return 'unserializable error detail'
+	}
+}
+
 export class APIMartProvider implements ImageProvider {
-	name = 'APIMart GPT Image 2'
+	name = 'APIMart Image'
 	private apiKey: string
 	private app: App
 	private outputDir: string
@@ -46,21 +46,22 @@ export class APIMartProvider implements ImageProvider {
 	}
 
 	async generateImage(prompt: string, params?: Record<string, unknown>): Promise<GenerateImageResult> {
+		const modelId = stringParam(params?.modelId, DEFAULT_MODEL)
 		const refImages: string[] = params?.refImages || []
 
 		const size = stringParam(params?.aspectRatio, '1:1')
 		const tier = stringParam(params?.imageSize, '2K')
 		const resolution = tier === 'auto' ? '2k' : tier.toLowerCase()
 
-		const body: unknown = {
-			model: APIMART_MODEL,
+		const body: Record<string, unknown> = {
+			model: modelId,
 			prompt,
 			size,
 			resolution,
 			n: 1,
 		}
-		// Quality is only honored by the official channel
-		if (USE_OFFICIAL && params?.quality) {
+		// Quality is only honored by the official GPT Image 2 channel.
+		if (modelId === 'gpt-image-2-official' && params?.quality) {
 			body.quality = params.quality
 		}
 		if (refImages.length > 0) {
@@ -122,7 +123,8 @@ export class APIMartProvider implements ImageProvider {
 				return urls[0]
 			}
 			if (status === 'failed') {
-				throw new Error(`APIMart: task failed — ${data.error || data.message || 'no reason provided'}`)
+				const detail = stringifyDetail(data.error) || stringifyDetail(data.message) || 'no reason provided'
+				throw new Error(`APIMart: task failed — ${detail}`)
 			}
 			// pending / in_progress / submitted — keep polling
 			await sleep(POLL_INTERVAL_MS)

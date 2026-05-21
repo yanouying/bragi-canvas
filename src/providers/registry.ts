@@ -413,7 +413,7 @@ export const PROVIDERS: ProviderSpec[] = [
 	{
 		id: 'apimart',
 		name: 'APIMart',
-		description: 'GPT Image 2 gateway.',
+		description: 'Image model gateway.',
 		docUrl: 'https://apimart.ai',
 		fields: [{ key: 'apimart', label: 'API Key', placeholder: 'sk-...', type: 'password' }],
 		isConfigured: (s) => !!s.providers.apimart,
