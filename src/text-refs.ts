@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Obsidian Canvas internals and provider payloads are runtime-shaped data that this plugin narrows at use sites. */
 import type { App } from 'obsidian'
 import type { Canvas, CanvasNode } from './types/canvas-internal'
+import { clearIncomingRefAttachments, isGeneratingPlaceholderNode } from './generating-node'
 
 const STRIP_CLASS = 'bragi-text-ref-strip'
 const NODE_HAS_TEXT_REFS_CLASS = 'bragi-has-text-refs'
@@ -118,6 +119,10 @@ export async function getOrderedPrompts(
 
 export function updateTextRefStrip(canvas: Canvas, node: CanvasNode, app: App): void {
 	if (isDragging) return
+	if (isGeneratingPlaceholderNode(node)) {
+		clearIncomingRefAttachments(node)
+		return
+	}
 
 	const nodeData = node.getData() as unknown
 	if (nodeData.type !== 'text' && !(nodeData.type === 'file' && /\.md$/i.test(nodeData.file || ''))) {

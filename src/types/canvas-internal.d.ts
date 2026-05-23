@@ -50,6 +50,8 @@ export interface Canvas {
 	selection: Set<CanvasNode>
 	nodes: Map<string, CanvasNode>
 	wrapperEl: HTMLElement | null
+	/** Obsidian internal: center of the current viewport in canvas coordinates. */
+	posCenter?: () => { x: number; y: number }
 	addNode(node: CanvasNode): void
 	createTextNode(options: CreateNodeOptions): CanvasNode
 	deselectAll(): void

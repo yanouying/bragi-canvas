@@ -1,5 +1,15 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Obsidian Canvas internals and provider payloads are runtime-shaped data that this plugin narrows at use sites. */
 import type { Canvas, CanvasNode } from './types/canvas-internal'
+import {
+	createGeneratingOverlay,
+	findGeneratingOverlay,
+	formatGeneratingElapsed,
+	stopGeneratingOverlayAnimation,
+	updateGeneratingOverlay,
+	type GeneratingOverlayElements,
+} from './generating-overlay'
+import { clearIncomingRefAttachments } from './generating-node'
+import { stopSquare19Loader } from './dotm-square-19'
 
 /**
  * Get canvas from a known node
@@ -140,24 +150,19 @@ export function findFreePosition(
 interface GeneratingEntry {
 	modelName: string
 	startedAt: number
-	overlayEl: HTMLDivElement
+	overlay: GeneratingOverlayElements
 	nodeEl: HTMLElement
 }
 
 const generatingRegistry = new Map<string, GeneratingEntry>()
 let tickInterval: ReturnType<typeof window.setInterval> | null = null
 
-function renderOverlayText(modelName: string, startedAt: number): string {
-	const elapsed = Math.max(0, Math.floor((Date.now() - startedAt) / 1000))
-	return `Generating with ${modelName}... (${elapsed}s)`
-}
-
 function ensureTicker(): void {
 	if (tickInterval) return
 	tickInterval = window.setInterval(() => {
 		if (generatingRegistry.size === 0) { stopTicker(); return }
 		for (const entry of generatingRegistry.values()) {
-			entry.overlayEl.textContent = renderOverlayText(entry.modelName, entry.startedAt)
+			entry.overlay.elapsedEl.textContent = formatGeneratingElapsed(entry.startedAt)
 		}
 	}, 1000)
 }
@@ -173,15 +178,38 @@ function stopTicker(): void {
 function attachGeneratingOverlay(node: CanvasNode, modelName: string, startedAt: number): void {
 	const nodeEl = node.nodeEl || node.containerEl
 	if (!nodeEl) return
-	let overlayEl = nodeEl.querySelector<HTMLDivElement>('.bragi-generating-overlay')
-	if (!overlayEl) {
-		overlayEl = createDiv()
-		overlayEl.className = 'bragi-generating-overlay'
-		nodeEl.appendChild(overlayEl)
+	clearIncomingRefAttachments(node)
+	let overlay = findGeneratingOverlay(nodeEl)
+	if (!overlay) {
+		nodeEl.querySelectorAll('.bragi-generating-overlay').forEach(el => {
+			const loader = el.querySelector<HTMLElement>('.bragi-generating-loader')
+			stopSquare19Loader(loader)
+			el.remove()
+		})
+		overlay = createGeneratingOverlay()
+		nodeEl.appendChild(overlay.overlayEl)
 	}
-	overlayEl.textContent = renderOverlayText(modelName, startedAt)
-	generatingRegistry.set(node.id, { modelName, startedAt, overlayEl, nodeEl })
+	updateGeneratingOverlay(overlay, modelName, startedAt)
+	generatingRegistry.set(node.id, { modelName, startedAt, overlay, nodeEl })
 	ensureTicker()
+}
+
+/** Apply generating shimmer + overlay to an existing text node (preview / rehydrate). */
+export function styleGeneratingPlaceholder(
+	node: CanvasNode,
+	modelName: string,
+	startedAt: number,
+): void {
+	node.setData({
+		...node.getData(),
+		color: '',
+		bragiGenerating: true,
+		bragiGenModelName: modelName,
+		bragiGenStartedAt: startedAt,
+	})
+	const nodeEl = node.nodeEl || node.containerEl
+	if (nodeEl) nodeEl.classList.add('bragi-generating')
+	attachGeneratingOverlay(node, modelName, startedAt)
 }
 
 /**
@@ -191,7 +219,8 @@ function attachGeneratingOverlay(node: CanvasNode, modelName: string, startedAt:
 function detachGeneratingOverlay(nodeId: string, nodeEl?: HTMLElement | null): void {
 	const entry = generatingRegistry.get(nodeId)
 	if (entry) {
-		entry.overlayEl.remove()
+		stopGeneratingOverlayAnimation(entry.overlay)
+		entry.overlay.overlayEl.remove()
 		generatingRegistry.delete(nodeId)
 	}
 	// Defensive: strip any stray overlay even if the registry missed it
@@ -201,7 +230,10 @@ function detachGeneratingOverlay(nodeId: string, nodeEl?: HTMLElement | null): v
 
 /** Stop the ticker and clear overlays on plugin unload. */
 export function stopGeneratingTicker(): void {
-	for (const entry of generatingRegistry.values()) entry.overlayEl.remove()
+	for (const entry of generatingRegistry.values()) {
+		stopGeneratingOverlayAnimation(entry.overlay)
+		entry.overlay.overlayEl.remove()
+	}
 	generatingRegistry.clear()
 	stopTicker()
 }
@@ -405,6 +437,7 @@ export function markNodeFailed(node: CanvasNode, errorMsg: string): void {
 	void node.setText(`Generation failed: ${errorMsg}`)
 	const nodeEl = node.nodeEl || node.containerEl
 	nodeEl?.classList.remove('bragi-generating')
+	nodeEl?.classList.add('bragi-generation-failed')
 	detachGeneratingOverlay(node.id, nodeEl)
 }
 
@@ -428,6 +461,7 @@ export function markNodeInterrupted(node: CanvasNode): void {
 	void node.setText(`Generation interrupted: ${modelName}${runtime}. You can delete this node.`)
 	const nodeEl = node.nodeEl || node.containerEl
 	nodeEl?.classList.remove('bragi-generating')
+	nodeEl?.classList.add('bragi-generation-failed')
 	detachGeneratingOverlay(node.id, nodeEl)
 }
 

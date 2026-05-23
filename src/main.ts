@@ -15,6 +15,7 @@ import { refreshAllTextRefs, removeAllTextRefs, getOrderedPrompts } from './text
 import { getOrderedAudios, refreshAllAudioRefs, removeAllAudioRefs } from './audio-refs'
 import { startEdgeHighlight, stopEdgeHighlight } from './edge-highlight'
 import { startMediaNodeHover, stopMediaNodeHover } from './media-node-hover'
+import { maybeSpawnPlaceholderStylePreviews, spawnPlaceholderStylePreviews } from './placeholder-style-preview'
 import { exportCanvas, importCanvas } from './import-export'
 import type { PanelResult } from './panel'
 import type { AudioProvider, VideoProvider } from './providers/types'
@@ -47,6 +48,7 @@ export default class BragiCanvas extends Plugin {
 	// Canvases we've already swept this session — avoid repeat sweeps on every
 	// layout-change event.
 	private sweptCanvasPaths = new Set<string>()
+	private placeholderPreviewSpawned = new Set<string>()
 	private cssHotReloadStop: (() => void) | null = null
 
 	async onload() {
@@ -129,6 +131,19 @@ export default class BragiCanvas extends Plugin {
 			name: 'Import .bragi package (as new canvas)',
 			callback: () => {
 				void importCanvas(this.app, this.settings, null, 'new')
+			},
+		})
+
+		this.addCommand({
+			id: 'bragi-preview-placeholder-styles',
+			name: 'Preview placeholder node styles (generating + failed)',
+			checkCallback: (checking: boolean) => {
+				const canvas = this.getActiveCanvas()
+				if (!canvas) return false
+				if (!checking && spawnPlaceholderStylePreviews(canvas)) {
+					new Notice('Bragi preview: two demo nodes added near viewport center.')
+				}
+				return true
 			},
 		})
 
@@ -250,6 +265,7 @@ export default class BragiCanvas extends Plugin {
 		// Highlight connected edges on node selection
 		startEdgeHighlight(canvas)
 		startMediaNodeHover(canvas, this.app)
+		maybeSpawnPlaceholderStylePreviews(canvas, this.manifest.dir, canvasPath, this.placeholderPreviewSpawned)
 
 		// Replace right-side canvas control icons + bottom card menu icons
 		const containerEl = (view).containerEl as HTMLElement

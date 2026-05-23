@@ -2,6 +2,7 @@
 import type { App } from 'obsidian'
 import type { Canvas, CanvasNode } from './types/canvas-internal'
 import { getUpstreamInputs } from './edge-parser'
+import { clearIncomingRefAttachments, isGeneratingPlaceholderNode } from './generating-node'
 
 const STRIP_CLASS = 'bragi-ref-strip'
 const NODE_HAS_REFS_CLASS = 'bragi-has-refs'
@@ -45,6 +46,10 @@ export function getOrderedImages(canvas: Canvas, node: CanvasNode): string[] {
 
 export function updateRefThumbnails(canvas: Canvas, node: CanvasNode, app: App): void {
 	if (isDragging) return // Don't rebuild during drag
+	if (isGeneratingPlaceholderNode(node)) {
+		clearIncomingRefAttachments(node)
+		return
+	}
 
 	const nodeData = node.getData()
 	if (nodeData.type !== 'text' && !(nodeData.type === 'file' && (nodeData as unknown).file?.endsWith('.md'))) {

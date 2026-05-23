@@ -36,10 +36,19 @@
 	--bragi-active: rgba(0, 0, 0, 0.08);
 	--bragi-edge-default: #d4d4d4; /* neutral-300 — one step above canvas bg */
 	--bragi-media-label-size: 11px;
-	--bragi-media-label-hover: #525252; /* neutral-600 — lighter than selected text */
+	--bragi-media-label-hover: #737373; /* neutral-500 */
 	--bragi-danger: #e5484d;
 	--bragi-danger-text: #ffffff;
 	--bragi-canvas-bg: #f5f5f5; /* neutral-100 */
+	--bragi-placeholder-bg: #e5e5e5; /* neutral-200 — visible on neutral-100 canvas */
+	--bragi-shimmer-fg: color-mix(in oklch, var(--bragi-placeholder-bg), white 58%);
+	--bragi-shimmer-band: 46%;
+	/* Full exit: offset = ± band/(100−band) — center at edge still leaves half the band visible */
+	--bragi-shimmer-mask-start: -88%;
+	--bragi-shimmer-mask-end: 188%;
+	--bragi-shimmer-opacity: 0.88;
+	--bragi-shimmer-cycle: 2.85s;
+	--bragi-shimmer-stagger: 0.42s; /* ~28% into sweep — band 2 enters while band 1 still crossing */
 	--bragi-node-border: var(--bragi-border);
 	--bragi-shadow-sm: 0px 1px 2px 0px #0000000a;
 	--bragi-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.12);
@@ -61,81 +70,150 @@
 	--bragi-hover: rgba(255, 255, 255, 0.06);
 	--bragi-active: rgba(255, 255, 255, 0.1);
 	--bragi-edge-default: #525252; /* neutral-600 on ~neutral-900 canvas */
-	--bragi-media-label-hover: #e0e0e0; /* neutral-200 — softer on dark canvas */
+	--bragi-media-label-hover: #a3a3a3; /* neutral-400 */
 	--bragi-danger: #e5484d;
 	--bragi-danger-text: #ffffff;
 	--bragi-canvas-bg: rgb(25, 25, 25); /* ~neutral-900 #191919 */
+	--bragi-placeholder-bg: #525252; /* surface-muted — visible on dark canvas */
+	--bragi-shimmer-fg: color-mix(in oklch, var(--bragi-placeholder-bg), white 32%);
+	--bragi-shimmer-opacity: 0.66;
 	--bragi-node-border: var(--bragi-border);
 	--bragi-pano-bg: #000000;
 }
 
 /* ── Bragi Canvas — Canvas Node Shadow Removal ──────────────────────── */
+/*
+ * Border ring via ::before overlay — zero layout impact (not inside/outside
+ * the node box). Real border removed so media fills edge-to-edge.
+ */
+
+/* Obsidian zoomed-out text preview — hide inset placeholder halo behind the card */
+.canvas-node-placeholder::after {
+	display: none;
+}
+
+.canvas-node.bragi-generating .canvas-node-placeholder,
+.canvas-node.bragi-generation-failed .canvas-node-placeholder {
+	background: transparent;
+	color: transparent;
+}
+
+/* Zoomed-out text preview icon (three bars) — hide on placeholders only */
+.canvas-node.bragi-generating .canvas-icon-placeholder,
+.canvas-node.bragi-generation-failed .canvas-icon-placeholder {
+	display: none;
+}
 
 .canvas-node-container {
 	box-shadow: none;
-	border-width: 2px;
-	border-color: transparent;
+	border: none;
 	border-radius: 12px;
-	box-sizing: content-box;
+	box-sizing: border-box;
+	position: relative;
 }
 
-.theme-light .canvas-node-container {
+/* Obsidian adds shadow-border-accent on select — outer ring outside our ::before */
+.canvas-node.is-selected .canvas-node-container,
+.canvas-node.is-focused .canvas-node-container,
+.canvas-node.is-themed .canvas-node-container,
+.is-selected .canvas-node-container,
+.is-themed .canvas-node-container,
+.canvas-node.is-selected.is-dragging .canvas-node-container,
+.canvas-node.is-focused.is-dragging .canvas-node-container {
+	box-shadow: none !important;
+	border: none;
+}
+
+.canvas-node-container::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	border: 2px solid transparent;
+	border-radius: inherit;
+	pointer-events: none;
+	box-sizing: border-box;
+	z-index: 2;
+}
+
+.theme-light .canvas-node-container::before {
 	border-color: transparent;
 }
 
-.canvas-node.is-themed .canvas-node-container,
-.is-themed .canvas-node-container {
+.canvas-node.is-themed .canvas-node-container::before,
+.is-themed .canvas-node-container::before {
 	border-color: rgb(var(--canvas-color));
-	box-shadow: none;
 }
 
 /* Selected / focused without custom color — accent ring */
-.is-selected:not(.is-themed) .canvas-node-container,
-.canvas-node.is-selected:not(.is-themed) .canvas-node-container,
-.canvas-node.is-focused:not(.is-themed) .canvas-node-container {
+.is-selected:not(.is-themed) .canvas-node-container::before,
+.canvas-node.is-selected:not(.is-themed) .canvas-node-container::before,
+.canvas-node.is-focused:not(.is-themed) .canvas-node-container::before {
 	border-color: var(--color-accent);
-	box-shadow: none;
 }
 
 /* Selected / focused with custom color — keep user color, not accent */
-.is-selected.is-themed .canvas-node-container,
-.canvas-node.is-selected.is-themed .canvas-node-container,
-.canvas-node.is-focused.is-themed .canvas-node-container {
+.is-selected.is-themed .canvas-node-container::before,
+.canvas-node.is-selected.is-themed .canvas-node-container::before,
+.canvas-node.is-focused.is-themed .canvas-node-container::before {
 	border-color: rgb(var(--canvas-color));
-	box-shadow: none;
 }
 
-.is-selected.is-themed.is-dragging .canvas-node-container,
-.canvas-node.is-selected.is-themed.is-dragging .canvas-node-container,
-.canvas-node.is-focused.is-themed.is-dragging .canvas-node-container {
-	box-shadow: none;
+/* Hover border — every canvas node type */
+@media (hover: hover) {
+	.canvas-node:not(.is-themed):not(.bragi-generating):not(.bragi-generation-failed):hover .canvas-node-container::before {
+		border-color: var(--color-accent);
+	}
+
+	.canvas-node.is-themed:not(.bragi-generating):not(.bragi-generation-failed):hover .canvas-node-container::before {
+		border-color: rgb(var(--canvas-color));
+	}
 }
 
-/* ── Generating node shimmer animation ──────────────────────────────── */
+/* ── Generating shimmer: dual soft bands via mask (no slant / no hard box edge) ── */
 
 .canvas-node.bragi-generating .canvas-node-container {
+	--bragi-shimmer-mask: linear-gradient(
+		90deg,
+		transparent 0%,
+		rgb(0 0 0 / 0.14) 10%,
+		rgb(0 0 0 / 0.32) 24%,
+		rgb(0 0 0 / 0.48) 38%,
+		rgb(0 0 0 / 0.58) 50%,
+		rgb(0 0 0 / 0.48) 62%,
+		rgb(0 0 0 / 0.32) 76%,
+		rgb(0 0 0 / 0.14) 90%,
+		transparent 100%
+	);
+
 	position: relative;
 	overflow: hidden;
-	background-color: var(--bragi-border);
-	border-color: transparent;
+	background-color: var(--bragi-placeholder-bg);
 }
 
+/* ::before = band 2 (staggered), ::after = band 1 */
+.canvas-node.bragi-generating .canvas-node-container::before,
 .canvas-node.bragi-generating .canvas-node-container::after {
 	content: '';
 	position: absolute;
-	top: 0;
-	left: 0;
-	right: 0;
-	bottom: 0;
-	background: linear-gradient(90deg,
-		transparent 25%,
-		var(--bragi-hover) 50%,
-		transparent 75%);
-	background-size: 200% 100%;
-	animation: bragi-shimmer 1.5s ease-in-out infinite;
+	inset: 0;
+	border: none;
 	pointer-events: none;
 	z-index: 1;
-	border-radius: inherit;
+	background: var(--bragi-shimmer-fg);
+	opacity: var(--bragi-shimmer-opacity);
+	-webkit-mask-image: var(--bragi-shimmer-mask);
+	mask-image: var(--bragi-shimmer-mask);
+	-webkit-mask-size: var(--bragi-shimmer-band) 100%;
+	mask-size: var(--bragi-shimmer-band) 100%;
+	-webkit-mask-repeat: no-repeat;
+	mask-repeat: no-repeat;
+	-webkit-mask-position: var(--bragi-shimmer-mask-start) 0;
+	mask-position: var(--bragi-shimmer-mask-start) 0;
+	animation: bragi-shimmer-pass var(--bragi-shimmer-cycle) infinite;
+}
+
+.canvas-node.bragi-generating .canvas-node-container::before {
+	animation-delay: var(--bragi-shimmer-stagger);
 }
 
 .canvas-node.bragi-generating .canvas-node-content {
@@ -150,41 +228,198 @@
 	cursor: default;
 }
 
-@keyframes bragi-shimmer {
-	0% { background-position: 200% 0; }
-	100% { background-position: -200% 0; }
+.canvas-node.bragi-generating .bragi-text-ref-strip,
+.canvas-node.bragi-generating .bragi-ref-strip,
+.canvas-node.bragi-generating .bragi-audio-ref-strip {
+	display: none !important;
 }
 
-/* "Generating with X... (Ns)" overlay — bottom-center of the placeholder node */
+@keyframes bragi-shimmer-pass {
+	0% {
+		-webkit-mask-position: var(--bragi-shimmer-mask-start) 0;
+		mask-position: var(--bragi-shimmer-mask-start) 0;
+		animation-timing-function: ease-in-out;
+	}
+
+	50% {
+		-webkit-mask-position: var(--bragi-shimmer-mask-end) 0;
+		mask-position: var(--bragi-shimmer-mask-end) 0;
+	}
+
+	50.01%, 76.99% {
+		-webkit-mask-position: var(--bragi-shimmer-mask-end) 0;
+		mask-position: var(--bragi-shimmer-mask-end) 0;
+	}
+
+	77% {
+		-webkit-mask-position: var(--bragi-shimmer-mask-start) 0;
+		mask-position: var(--bragi-shimmer-mask-start) 0;
+		animation-timing-function: steps(1, jump-start);
+	}
+
+	100% {
+		-webkit-mask-position: var(--bragi-shimmer-mask-start) 0;
+		mask-position: var(--bragi-shimmer-mask-start) 0;
+	}
+}
+
+/* Generating overlay — centered DotmSquare19 loader + elapsed; model name in bottom pill */
+.canvas-node.bragi-generating {
+	/* Match dotmatrix layout: size 24, dotSize 3 → dot = size/8, gap from remainder */
+	--bragi-loader-size: clamp(
+		26px,
+		min(var(--canvas-node-width, 320px), var(--canvas-node-height, 200px)) * 0.22,
+		56px
+	);
+	--bragi-dmx-dot-size: calc(var(--bragi-loader-size) / 8);
+	--bragi-dmx-gap: max(1px, calc((var(--bragi-loader-size) - 5 * var(--bragi-dmx-dot-size)) / 4));
+	--bragi-generating-elapsed-size: clamp(10px, var(--bragi-loader-size) * 0.38, 13px);
+	/* Lift loader stack to balance the bottom model pill */
+	--bragi-generating-center-lift: clamp(
+		8px,
+		min(var(--canvas-node-width, 320px), var(--canvas-node-height, 200px)) * 0.045,
+		16px
+	);
+}
+
 .canvas-node.bragi-generating .bragi-generating-overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 2;
+	pointer-events: none;
+	user-select: none;
+	border: none;
+	outline: none;
+	box-shadow: none !important;
+	filter: none;
+	background: transparent;
+}
+
+.canvas-node.bragi-generating .bragi-generating-overlay::before {
+	content: none;
+	display: none;
+}
+
+.canvas-node.bragi-generating .bragi-generating-center {
+	position: absolute;
+	top: calc(50% - var(--bragi-generating-center-lift));
+	left: 50%;
+	transform: translate(-50%, -50%);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: clamp(10px, var(--bragi-loader-size) * 0.22, 16px);
+	text-align: center;
+}
+
+.canvas-node.bragi-generating .bragi-generating-loader {
+	flex-shrink: 0;
+	color: var(--bragi-text);
+}
+
+.canvas-node.bragi-generating .bragi-dmx-root {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	vertical-align: middle;
+}
+
+.canvas-node.bragi-generating .bragi-dmx-grid {
+	display: grid;
+	grid-template-columns: repeat(5, minmax(0, var(--bragi-dmx-dot-size)));
+	grid-template-rows: repeat(5, minmax(0, var(--bragi-dmx-dot-size)));
+	gap: var(--bragi-dmx-gap);
+	width: var(--bragi-loader-size);
+	height: var(--bragi-loader-size);
+}
+
+.canvas-node.bragi-generating .bragi-dmx-dot {
+	width: var(--bragi-dmx-dot-size);
+	height: var(--bragi-dmx-dot-size);
+	display: block;
+	border-radius: 999px;
+	background: currentColor;
+	opacity: 0;
+	transform-origin: center;
+	will-change: opacity;
+}
+
+.canvas-node.bragi-generating .bragi-dmx-dot.bragi-dmx-inactive {
+	opacity: 0 !important;
+	visibility: hidden;
+	pointer-events: none;
+}
+
+.canvas-node.bragi-generating .bragi-generating-elapsed {
+	color: var(--bragi-text);
+	font-size: var(--bragi-generating-elapsed-size);
+	font-weight: 400;
+	line-height: 1.2;
+	opacity: 1;
+}
+
+.canvas-node.bragi-generating .bragi-generating-model-pill {
 	position: absolute;
 	left: 50%;
 	bottom: 12px;
 	transform: translateX(-50%);
-	z-index: 2;
-	padding: 4px 10px;
-	border-radius: 6px;
-	background: var(--bragi-surface);
-	color: var(--bragi-text-muted);
-	font-size: 12px;
-	white-space: nowrap;
+	max-width: calc(100% - 24px);
+	padding: 5px 12px;
+	border-radius: 9999px;
+	background: color-mix(in srgb, var(--bragi-surface) 78%, transparent);
+	-webkit-backdrop-filter: blur(10px);
+	backdrop-filter: blur(10px);
+	color: var(--bragi-text);
+	font-size: 11px;
+	font-weight: 400;
 	pointer-events: none;
-	user-select: none;
-	box-shadow: var(--bragi-shadow-sm);
+	border: none;
+	outline: none;
+	box-shadow: none !important;
+	filter: none;
+	text-shadow: none;
+	opacity: 1;
+}
+
+.canvas-node.bragi-generating .bragi-generating-model {
+	display: block;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 100%;
+}
+
+/* ── Failed / interrupted placeholder ─────────────────────────────── */
+
+.canvas-node.bragi-generation-failed .canvas-node-container {
+	background: color-mix(in srgb, var(--bragi-danger) 10%, var(--bragi-surface-muted));
+}
+
+.canvas-node.bragi-generation-failed .canvas-node-container::before {
+	border-color: var(--bragi-danger);
+}
+
+.canvas-node.bragi-generation-failed .canvas-node-content,
+.canvas-node.bragi-generation-failed .canvas-node-content .cm-editor,
+.canvas-node.bragi-generation-failed .canvas-node-content .markdown-preview-view {
+	color: color-mix(in srgb, var(--bragi-danger) 85%, var(--bragi-text));
+	font-size: 12px;
+	line-height: 1.45;
 }
 
 
-/* Image / video embed nodes: Obsidian gives .canvas-node-container a white
-   (--background-primary) background. With our transparent 2px border, that
-   background still paints under the border band → visible white ring around media. */
+/* Image / video: square corners, fill edge-to-edge (no flex gap / white strip) */
 .canvas-node-container:has(.canvas-node-content.image-embed),
-.canvas-node-container:has(.canvas-node-content.media-embed:not(.audio-embed)) {
+.canvas-node-container:has(.canvas-node-content.media-embed.video-embed) {
 	background-color: transparent;
-	background-clip: padding-box;
+	border-radius: 0;
 }
 
 .canvas-node-content.image-embed,
 .canvas-node-content.media-embed:not(.audio-embed) {
+	display: block;
+	width: 100%;
+	height: 100%;
 	padding: 0;
 	overflow: hidden;
 	background: transparent;
@@ -211,7 +446,7 @@
 	background-color: transparent;
 }
 
-/* ── Media node hover: extension + meta labels, accent border ─────── */
+/* Typography + hover color only — show/hide follows Obsidian mod-hover-label */
 .canvas-node.bragi-media-node .canvas-node-label {
 	color: var(--bragi-edge-default);
 	font-size: var(--bragi-media-label-size);
@@ -226,31 +461,10 @@
 	transform-origin: bottom right;
 }
 
-/* Hover: show both labels — same neutral as default edge stroke */
 @media (hover: hover) {
-	.canvas-node.bragi-media-node:hover .canvas-node-label.mod-hover-label {
-		opacity: 1;
-	}
-
-	.canvas-node.bragi-media-node:hover .canvas-node-label,
-	.canvas-node.bragi-media-node .canvas-node-label:hover {
+	.canvas-node.bragi-media-node:hover .canvas-node-label {
 		color: var(--bragi-media-label-hover);
 	}
-
-	.canvas-node.bragi-media-node:not(.is-themed):hover .canvas-node-container {
-		border-color: var(--color-accent);
-	}
-
-	.canvas-node.bragi-media-node.is-themed:hover .canvas-node-container {
-		border-color: rgb(var(--canvas-color));
-	}
-}
-
-/* Selected / focused: keep both labels visible — primary text (black / light) */
-.canvas-node.bragi-media-node.is-selected .canvas-node-label,
-.canvas-node.bragi-media-node.is-focused .canvas-node-label {
-	opacity: 1;
-	color: var(--bragi-text);
 }
 
 /* ── Bragi Canvas — Canvas Edge (connection lines) ──────────────────── */

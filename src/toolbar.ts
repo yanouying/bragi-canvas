@@ -524,11 +524,13 @@ export function patchCanvasMenu(
 				addMoreButton(menuEl)
 				const moreBtn = menuEl.querySelector<HTMLElement>('.bragi-more')
 				const alignBtn = findBuiltinByLabel(menuEl, 'align') || findBuiltinByLabel(menuEl, 'arrange')
+				const groupBtn = findBuiltinByLabel(menuEl, 'group')
 				reorderMenuButtons(menuEl, [
 					...generationButtons,
 					separator,
 					alignBtn,
 					markBtn,
+					groupBtn,
 					moreBtn,
 				])
 				next.call(this)
