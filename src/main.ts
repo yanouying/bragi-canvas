@@ -4,8 +4,9 @@ import { BragiSettings, DEFAULT_SETTINGS, BragiSettingTab, migrateDashScopeSetti
 import { uploadRef } from './providers/upload'
 import { getProvider } from './providers/registry'
 import { TaskQueue, type TaskSnapshot } from './task-queue'
-import { getCanvasFromNode, createPlaceholderNode, replacePlaceholderWithFile, markNodeFailed, duplicateWithConnections, computeOutputSize, readAspectRatio, sweepInterruptedPlaceholders, stopGeneratingTicker } from './canvas-ops'
+import { getCanvasFromNode, createPlaceholderNode, replacePlaceholderWithFile, markNodeFailed, duplicateWithConnections, computeOutputSize, readAspectRatio, sweepInterruptedPlaceholders, rehydrateFailedPlaceholders, stopGeneratingTicker } from './canvas-ops'
 import { patchCanvasMenu, unpatchCanvasMenu, removeToolbarButtons, replaceCanvasControlIcons, replaceCanvasCardMenuIcons } from './toolbar'
+import { patchPlaceholderContextMenu, unpatchPlaceholderContextMenu } from './placeholder-context-menu'
 import { openPanoramaViewer } from './panorama'
 import { registerBragiIcons } from './icons'
 import { showGenerateBar, showBatchGenerateBar, hideGenerateBar } from './panel'
@@ -14,6 +15,7 @@ import { refreshAllThumbnails, removeAllThumbnails, getOrderedImages, getAssetId
 import { refreshAllTextRefs, removeAllTextRefs, getOrderedPrompts } from './text-refs'
 import { getOrderedAudios, refreshAllAudioRefs, removeAllAudioRefs } from './audio-refs'
 import { startEdgeHighlight, stopEdgeHighlight } from './edge-highlight'
+import { startMediaNodeHover, stopMediaNodeHover } from './media-node-hover'
 import { exportCanvas, importCanvas } from './import-export'
 import type { PanelResult } from './panel'
 import type { AudioProvider, VideoProvider } from './providers/types'
@@ -25,8 +27,11 @@ import { ensureBytePlusAsset, getBytePlusAssetCreds } from './byteplus-asset-flo
 import { splitImageNodeIntoTiles } from './grid-split-flow'
 import { isSupportedLanguage, LanguageGateModal } from './ui/language-gate'
 import { installAlwaysNewTab } from './always-new-tab'
+import { startCssHotReload } from './dev-css-hot-reload'
 import type { Canvas, CanvasNode } from './types/canvas-internal'
 import type { VoiceSourceMode } from './models/types'
+import { existsSync } from 'fs'
+import { join } from 'path'
 
 export default class BragiCanvas extends Plugin {
 	settings: BragiSettings = DEFAULT_SETTINGS
@@ -43,6 +48,7 @@ export default class BragiCanvas extends Plugin {
 	// Canvases we've already swept this session — avoid repeat sweeps on every
 	// layout-change event.
 	private sweptCanvasPaths = new Set<string>()
+	private cssHotReloadStop: (() => void) | null = null
 
 	async onload() {
 		// Bragi relies on Obsidian running in English (our UI hooks match the
@@ -128,17 +134,25 @@ export default class BragiCanvas extends Plugin {
 		})
 
 		if (this.settings.mcpEnabled) this.startMcpServer()
+
+		if (existsSync(join(this.manifest.dir, '.css-hot-reload'))) {
+			this.cssHotReloadStop = startCssHotReload(this.manifest.dir)
+		}
 	}
 
 	onunload() {
+		this.cssHotReloadStop?.()
+		this.cssHotReloadStop = null
 		this.stopMcpServer()
 		unpatchCanvasMenu()
+		unpatchPlaceholderContextMenu()
 		removeToolbarButtons()
 		hideGenerateBar()
 		removeAllThumbnails()
 		removeAllTextRefs()
 		removeAllAudioRefs()
 		stopEdgeHighlight()
+		stopMediaNodeHover()
 		this.taskQueue.stop()
 		stopGeneratingTicker()
 		if (this.thumbInterval) window.clearInterval(this.thumbInterval)
@@ -207,6 +221,8 @@ export default class BragiCanvas extends Plugin {
 			}
 		}
 
+		rehydrateFailedPlaceholders(canvas)
+
 		patchCanvasMenu(
 			canvas,
 			(node) => this.openPanel('image', node),
@@ -224,6 +240,8 @@ export default class BragiCanvas extends Plugin {
 			}),
 		)
 
+		patchPlaceholderContextMenu(canvas)
+
 		// Refresh thumbnails periodically to catch edge changes
 		if (this.thumbInterval) window.clearInterval(this.thumbInterval)
 		refreshAllThumbnails(canvas, this.app)
@@ -237,12 +255,13 @@ export default class BragiCanvas extends Plugin {
 
 		// Highlight connected edges on node selection
 		startEdgeHighlight(canvas)
+		startMediaNodeHover(canvas, this.app)
 
 		// Replace right-side canvas control icons + bottom card menu icons
 		const containerEl = (view).containerEl as HTMLElement
 		if (containerEl) {
 			replaceCanvasControlIcons(containerEl)
-			replaceCanvasCardMenuIcons(containerEl, this.app, this.manifest.id)
+			replaceCanvasCardMenuIcons(containerEl, canvas, this.app, this.manifest.id)
 		}
 
 	}

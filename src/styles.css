@@ -1,167 +1,650 @@
+/* ── Bragi design tokens (independent of Obsidian accent) ───────────── */
+/*
+ * Color philosophy
+ * ───────────────
+ * Bragi does NOT import Tailwind CSS. Values are our own --bragi-* tokens.
+ * The neutral gray scale is calibrated against Tailwind CSS "neutral"
+ * (https://tailwindcss.com/docs/customizing-colors) as a reference — same
+ * steps on the ladder, occasionally exact hex, sometimes a nearby custom value.
+ *
+ * Use Obsidian --color-accent for canvas edge hover/selection only.
+ *
+ * Light · ref Tailwind neutral          Dark · ref Tailwind neutral
+ * ─────────────────────────────         ─────────────────────────────
+ * canvas-bg      neutral-100 #f5f5f5     canvas-bg      ~neutral-900 #191919
+ * surface        white #ffffff           surface        neutral-700  #404040
+ * surface-muted  ~neutral-50  #f6f6f6    surface-muted  neutral-600  #525252
+ * edge-default   neutral-300  #d4d4d4    edge-default   neutral-600  #525252
+ * text / accent  ~neutral-900 #161616    text / accent  ~neutral-100 #f0f0f0
+ * border         alpha black #00000012   border         alpha white #ffffff12
+ * hover/active   ~5–8% overlay           hover/active   ~6–10% overlay
+ *
+ * Floating toolbars (bottom bar, selection menu, generate bar) → --bragi-surface
+ */
+
+:root {
+	--bragi-accent: #161616; /* ~neutral-900 */
+	--bragi-accent-hover: #2a2a2a; /* between neutral-800 and neutral-700 */
+	--bragi-accent-text: #ffffff;
+	--bragi-surface: #ffffff; /* pure white; toolbars + panels */
+	--bragi-surface-muted: #f6f6f6; /* ~neutral-50 */
+	--bragi-border: #00000012; /* Bragi alpha border, not a neutral solid */
+	--bragi-text: #161616; /* ~neutral-900 */
+	--bragi-text-muted: rgba(0, 0, 0, 0.55);
+	--bragi-text-faint: rgba(0, 0, 0, 0.35);
+	--bragi-hover: rgba(0, 0, 0, 0.05);
+	--bragi-active: rgba(0, 0, 0, 0.08);
+	--bragi-edge-default: #d4d4d4; /* neutral-300 — one step above canvas bg */
+	--bragi-media-label-size: 11px;
+	--bragi-media-label-hover: #737373; /* neutral-500 */
+	--bragi-danger: #e5484d;
+	--bragi-danger-text: #ffffff;
+	--bragi-canvas-bg: #f5f5f5; /* neutral-100 */
+	--bragi-placeholder-bg: #e5e5e5; /* neutral-200 — visible on neutral-100 canvas */
+	--bragi-shimmer-fg: color-mix(in oklch, var(--bragi-placeholder-bg), white 58%);
+	--bragi-shimmer-band: 46%;
+	/* Full exit: offset = ± band/(100−band) — center at edge still leaves half the band visible */
+	--bragi-shimmer-mask-start: -88%;
+	--bragi-shimmer-mask-end: 188%;
+	--bragi-shimmer-opacity: 0.88;
+	--bragi-shimmer-cycle: 2.85s;
+	--bragi-shimmer-stagger: 0.42s; /* ~28% into sweep — band 2 enters while band 1 still crossing */
+	--bragi-node-border: var(--bragi-border);
+	--bragi-shadow-sm: 0px 1px 2px 0px #0000000a;
+	--bragi-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.12);
+	--bragi-shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.15);
+	--bragi-toolbar-shadow: var(--bragi-shadow-sm);
+	--bragi-pano-bg: #000000;
+}
+
+.theme-dark {
+	--bragi-accent: #f0f0f0; /* ~neutral-100 */
+	--bragi-accent-hover: #e0e0e0; /* ~neutral-200 */
+	--bragi-accent-text: #161616;
+	--bragi-surface: #404040; /* neutral-700 — toolbars + panels; above canvas bg */
+	--bragi-surface-muted: #525252; /* neutral-600 */
+	--bragi-border: #ffffff12;
+	--bragi-text: #f0f0f0;
+	--bragi-text-muted: rgba(255, 255, 255, 0.6);
+	--bragi-text-faint: rgba(255, 255, 255, 0.35);
+	--bragi-hover: rgba(255, 255, 255, 0.06);
+	--bragi-active: rgba(255, 255, 255, 0.1);
+	--bragi-edge-default: #525252; /* neutral-600 on ~neutral-900 canvas */
+	--bragi-media-label-hover: #a3a3a3; /* neutral-400 */
+	--bragi-danger: #e5484d;
+	--bragi-danger-text: #ffffff;
+	--bragi-canvas-bg: rgb(25, 25, 25); /* ~neutral-900 #191919 */
+	--bragi-placeholder-bg: #525252; /* surface-muted — visible on dark canvas */
+	--bragi-shimmer-fg: color-mix(in oklch, var(--bragi-placeholder-bg), white 32%);
+	--bragi-shimmer-opacity: 0.66;
+	--bragi-node-border: var(--bragi-border);
+	--bragi-pano-bg: #000000;
+}
+
 /* ── Bragi Canvas — Canvas Node Shadow Removal ──────────────────────── */
+/*
+ * Border ring via ::before overlay — zero layout impact (not inside/outside
+ * the node box). Real border removed so media fills edge-to-edge.
+ */
+
+/* Obsidian zoomed-out text preview — hide inset placeholder halo behind the card */
+.canvas-node-placeholder::after {
+	display: none;
+}
+
+.canvas-node.bragi-generating .canvas-node-placeholder,
+.canvas-node.bragi-generation-failed .canvas-node-placeholder {
+	background: transparent;
+	color: transparent;
+}
+
+/* Zoomed-out text preview icon (three bars) — hide on placeholders only */
+.canvas-node.bragi-generating .canvas-icon-placeholder,
+.canvas-node.bragi-generation-failed .canvas-icon-placeholder {
+	display: none;
+}
 
 .canvas-node-container {
 	box-shadow: none;
-	border-width: 1px;
+	border: none;
 	border-radius: 12px;
-	box-sizing: content-box;
-}
-
-.theme-light .canvas-node-container {
-	border-color: #e3e3e3;
-}
-
-/* ── Generating node shimmer animation ──────────────────────────────── */
-
-.canvas-node.bragi-generating .canvas-node-container {
+	box-sizing: border-box;
 	position: relative;
-	overflow: hidden;
-	background-color: var(--background-modifier-border);
+}
+
+/* Obsidian adds shadow-border-accent on select — outer ring outside our ::before */
+.canvas-node.is-selected .canvas-node-container,
+.canvas-node.is-focused .canvas-node-container,
+.canvas-node.is-themed .canvas-node-container,
+.is-selected .canvas-node-container,
+.is-themed .canvas-node-container,
+.canvas-node.is-selected.is-dragging .canvas-node-container,
+.canvas-node.is-focused.is-dragging .canvas-node-container {
+	box-shadow: none !important;
+	border: none;
+}
+
+.canvas-node-container::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	border: 2px solid transparent;
+	border-radius: inherit;
+	pointer-events: none;
+	box-sizing: border-box;
+	z-index: 2;
+}
+
+.theme-light .canvas-node-container::before {
 	border-color: transparent;
 }
 
+.canvas-node.is-themed .canvas-node-container::before,
+.is-themed .canvas-node-container::before {
+	border-color: rgb(var(--canvas-color));
+}
+
+/* Selected / focused without custom color — accent ring */
+.is-selected:not(.is-themed) .canvas-node-container::before,
+.canvas-node.is-selected:not(.is-themed) .canvas-node-container::before,
+.canvas-node.is-focused:not(.is-themed) .canvas-node-container::before {
+	border-color: var(--color-accent);
+}
+
+/* Selected / focused with custom color — keep user color, not accent */
+.is-selected.is-themed .canvas-node-container::before,
+.canvas-node.is-selected.is-themed .canvas-node-container::before,
+.canvas-node.is-focused.is-themed .canvas-node-container::before {
+	border-color: rgb(var(--canvas-color));
+}
+
+/* Hover border — every canvas node type */
+@media (hover: hover) {
+	.canvas-node:not(.is-themed):not(.bragi-generating):not(.bragi-generation-failed):hover .canvas-node-container::before {
+		border-color: var(--color-accent);
+	}
+
+	.canvas-node.is-themed:not(.bragi-generating):not(.bragi-generation-failed):hover .canvas-node-container::before {
+		border-color: rgb(var(--canvas-color));
+	}
+}
+
+/* ── Generating shimmer: dual soft bands via mask (no slant / no hard box edge) ── */
+
+.canvas-node.bragi-generating .canvas-node-container {
+	--bragi-shimmer-mask: linear-gradient(
+		90deg,
+		transparent 0%,
+		rgb(0 0 0 / 0.14) 10%,
+		rgb(0 0 0 / 0.32) 24%,
+		rgb(0 0 0 / 0.48) 38%,
+		rgb(0 0 0 / 0.58) 50%,
+		rgb(0 0 0 / 0.48) 62%,
+		rgb(0 0 0 / 0.32) 76%,
+		rgb(0 0 0 / 0.14) 90%,
+		transparent 100%
+	);
+
+	position: relative;
+	overflow: hidden;
+	background-color: var(--bragi-placeholder-bg);
+}
+
+/* ::before = band 2 (staggered), ::after = band 1 */
+.canvas-node.bragi-generating .canvas-node-container::before,
 .canvas-node.bragi-generating .canvas-node-container::after {
 	content: '';
 	position: absolute;
-	top: 0;
-	left: 0;
-	right: 0;
-	bottom: 0;
-	background: linear-gradient(90deg,
-		transparent 25%,
-		var(--background-modifier-hover) 50%,
-		transparent 75%);
-	background-size: 200% 100%;
-	animation: bragi-shimmer 1.5s ease-in-out infinite;
+	inset: 0;
+	border: none;
 	pointer-events: none;
 	z-index: 1;
-	border-radius: inherit;
+	background: var(--bragi-shimmer-fg);
+	opacity: var(--bragi-shimmer-opacity);
+	-webkit-mask-image: var(--bragi-shimmer-mask);
+	mask-image: var(--bragi-shimmer-mask);
+	-webkit-mask-size: var(--bragi-shimmer-band) 100%;
+	mask-size: var(--bragi-shimmer-band) 100%;
+	-webkit-mask-repeat: no-repeat;
+	mask-repeat: no-repeat;
+	-webkit-mask-position: var(--bragi-shimmer-mask-start) 0;
+	mask-position: var(--bragi-shimmer-mask-start) 0;
+	animation: bragi-shimmer-pass var(--bragi-shimmer-cycle) infinite;
+}
+
+.canvas-node.bragi-generating .canvas-node-container::before {
+	animation-delay: var(--bragi-shimmer-stagger);
 }
 
 .canvas-node.bragi-generating .canvas-node-content {
-	color: var(--text-faint);
+	color: var(--bragi-text-faint);
 	pointer-events: none;
 	user-select: none;
 }
 
 .canvas-node.bragi-generating .canvas-node-content * {
-	color: var(--text-faint);
+	color: var(--bragi-text-faint);
 	pointer-events: none;
 	cursor: default;
 }
 
-@keyframes bragi-shimmer {
-	0% { background-position: 200% 0; }
-	100% { background-position: -200% 0; }
+.canvas-node.bragi-generating .bragi-text-ref-strip,
+.canvas-node.bragi-generating .bragi-ref-strip,
+.canvas-node.bragi-generating .bragi-audio-ref-strip {
+	display: none !important;
 }
 
-/* "Generating with X... (Ns)" overlay — bottom-center of the placeholder node */
+@keyframes bragi-shimmer-pass {
+	0% {
+		-webkit-mask-position: var(--bragi-shimmer-mask-start) 0;
+		mask-position: var(--bragi-shimmer-mask-start) 0;
+		animation-timing-function: ease-in-out;
+	}
+
+	50% {
+		-webkit-mask-position: var(--bragi-shimmer-mask-end) 0;
+		mask-position: var(--bragi-shimmer-mask-end) 0;
+	}
+
+	50.01%, 76.99% {
+		-webkit-mask-position: var(--bragi-shimmer-mask-end) 0;
+		mask-position: var(--bragi-shimmer-mask-end) 0;
+	}
+
+	77% {
+		-webkit-mask-position: var(--bragi-shimmer-mask-start) 0;
+		mask-position: var(--bragi-shimmer-mask-start) 0;
+		animation-timing-function: steps(1, jump-start);
+	}
+
+	100% {
+		-webkit-mask-position: var(--bragi-shimmer-mask-start) 0;
+		mask-position: var(--bragi-shimmer-mask-start) 0;
+	}
+}
+
+/* Generating overlay — centered DotmSquare19 loader + elapsed; model name in bottom pill */
+.canvas-node.bragi-generating {
+	/* Match dotmatrix layout: size 24, dotSize 3 → dot = size/8, gap from remainder */
+	--bragi-loader-size: clamp(
+		26px,
+		min(var(--canvas-node-width, 320px), var(--canvas-node-height, 200px)) * 0.22,
+		56px
+	);
+	--bragi-dmx-dot-size: calc(var(--bragi-loader-size) / 8);
+	--bragi-dmx-gap: max(1px, calc((var(--bragi-loader-size) - 5 * var(--bragi-dmx-dot-size)) / 4));
+	--bragi-generating-elapsed-size: clamp(10px, var(--bragi-loader-size) * 0.38, 13px);
+	/* Lift loader stack to balance the bottom model pill */
+	--bragi-generating-center-lift: clamp(
+		8px,
+		min(var(--canvas-node-width, 320px), var(--canvas-node-height, 200px)) * 0.045,
+		16px
+	);
+}
+
 .canvas-node.bragi-generating .bragi-generating-overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 2;
+	pointer-events: none;
+	user-select: none;
+	border: none;
+	outline: none;
+	box-shadow: none !important;
+	filter: none;
+	background: transparent;
+}
+
+.canvas-node.bragi-generating .bragi-generating-overlay::before {
+	content: none;
+	display: none;
+}
+
+.canvas-node.bragi-generating .bragi-generating-center {
+	position: absolute;
+	top: calc(50% - var(--bragi-generating-center-lift));
+	left: 50%;
+	transform: translate(-50%, -50%);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: clamp(10px, var(--bragi-loader-size) * 0.22, 16px);
+	text-align: center;
+}
+
+.canvas-node.bragi-generating .bragi-generating-loader {
+	flex-shrink: 0;
+	color: var(--bragi-text);
+}
+
+.canvas-node.bragi-generating .bragi-dmx-root {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	vertical-align: middle;
+}
+
+.canvas-node.bragi-generating .bragi-dmx-grid {
+	display: grid;
+	grid-template-columns: repeat(5, minmax(0, var(--bragi-dmx-dot-size)));
+	grid-template-rows: repeat(5, minmax(0, var(--bragi-dmx-dot-size)));
+	gap: var(--bragi-dmx-gap);
+	width: var(--bragi-loader-size);
+	height: var(--bragi-loader-size);
+}
+
+.canvas-node.bragi-generating .bragi-dmx-dot {
+	width: var(--bragi-dmx-dot-size);
+	height: var(--bragi-dmx-dot-size);
+	display: block;
+	border-radius: 999px;
+	background: currentColor;
+	opacity: 0;
+	transform-origin: center;
+	will-change: opacity;
+}
+
+.canvas-node.bragi-generating .bragi-dmx-dot.bragi-dmx-inactive {
+	opacity: 0 !important;
+	visibility: hidden;
+	pointer-events: none;
+}
+
+.canvas-node.bragi-generating .bragi-generating-elapsed {
+	color: var(--bragi-text);
+	font-size: var(--bragi-generating-elapsed-size);
+	font-weight: 400;
+	line-height: 1.2;
+	opacity: 1;
+}
+
+.canvas-node.bragi-generating .bragi-generating-model-pill,
+.canvas-node.bragi-generation-failed .bragi-generating-model-pill {
 	position: absolute;
 	left: 50%;
 	bottom: 12px;
 	transform: translateX(-50%);
-	z-index: 2;
-	padding: 4px 10px;
-	border-radius: 6px;
-	background: var(--background-primary);
-	color: var(--text-muted);
-	font-size: 12px;
+	max-width: calc(100% - 24px);
+	padding: 5px 12px;
+	border-radius: 9999px;
+	background: color-mix(in srgb, var(--bragi-surface) 78%, transparent);
+	-webkit-backdrop-filter: blur(10px);
+	backdrop-filter: blur(10px);
+	color: var(--bragi-text);
+	font-size: 11px;
+	font-weight: 400;
+	pointer-events: none;
+	border: none;
+	outline: none;
+	box-shadow: none !important;
+	filter: none;
+	text-shadow: none;
+	opacity: 1;
+}
+
+.canvas-node.bragi-generating .bragi-generating-model,
+.canvas-node.bragi-generation-failed .bragi-generating-model {
+	display: block;
+	overflow: hidden;
+	text-overflow: ellipsis;
 	white-space: nowrap;
+	max-width: 100%;
+}
+
+/* ── Failed / interrupted placeholder ─────────────────────────────── */
+
+.canvas-node.bragi-generation-failed {
+	--bragi-failed-icon-size: clamp(
+		28px,
+		min(var(--canvas-node-width, 320px), var(--canvas-node-height, 200px)) * 0.24,
+		48px
+	);
+	--bragi-failed-title-size: clamp(10px, var(--bragi-failed-icon-size) * 0.38, 13px);
+	--bragi-generating-center-lift: clamp(
+		8px,
+		min(var(--canvas-node-width, 320px), var(--canvas-node-height, 200px)) * 0.045,
+		16px
+	);
+}
+
+.canvas-node.bragi-generation-failed .canvas-node-container {
+	background: color-mix(in srgb, var(--bragi-danger) 12%, var(--bragi-surface-muted));
+}
+
+.canvas-node.bragi-generation-failed .canvas-node-container::before {
+	border-color: transparent;
+}
+
+.canvas-node.bragi-generation-failed.is-selected .canvas-node-container::before,
+.canvas-node.bragi-generation-failed.is-focused .canvas-node-container::before {
+	border-color: var(--bragi-danger);
+}
+
+.canvas-node.bragi-generation-failed .canvas-node-content {
+	color: transparent;
 	pointer-events: none;
 	user-select: none;
-	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
-
-/* Image embed nodes: remove gap between image and rounded border */
-.canvas-node-content.image-embed {
-	padding: 0;
-	overflow: hidden;
+.canvas-node.bragi-generation-failed .canvas-node-content * {
+	color: transparent;
+	pointer-events: none;
+	cursor: default;
 }
 
-.canvas-node-content.image-embed img {
+.canvas-node.bragi-generation-failed .bragi-text-ref-strip,
+.canvas-node.bragi-generation-failed .bragi-ref-strip,
+.canvas-node.bragi-generation-failed .bragi-audio-ref-strip {
+	display: none !important;
+}
+
+.canvas-node.bragi-generation-failed .bragi-failed-overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 2;
+	pointer-events: none;
+	user-select: none;
+	background: transparent;
+}
+
+.canvas-node.bragi-generation-failed .bragi-failed-center {
+	position: absolute;
+	top: calc(50% - var(--bragi-generating-center-lift));
+	left: 50%;
+	transform: translate(-50%, -50%);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: clamp(8px, var(--bragi-failed-icon-size) * 0.22, 14px);
+	text-align: center;
+	max-width: calc(100% - 24px);
+	padding: 0 12px;
+}
+
+.canvas-node.bragi-generation-failed .bragi-failed-icon {
+	width: var(--bragi-failed-icon-size);
+	height: var(--bragi-failed-icon-size);
+	flex-shrink: 0;
+	color: var(--bragi-danger);
+}
+
+.canvas-node.bragi-generation-failed .bragi-failed-icon svg {
 	display: block;
 	width: 100%;
 	height: 100%;
+}
+
+.canvas-node.bragi-generation-failed .bragi-failed-title {
+	color: var(--bragi-danger);
+	font-size: var(--bragi-failed-title-size);
+	font-weight: 400;
+	line-height: 1.2;
+	white-space: nowrap;
+	opacity: 1;
+}
+
+
+/* Image / video: square corners, fill edge-to-edge (no flex gap / white strip) */
+.canvas-node-container:has(.canvas-node-content.image-embed),
+.canvas-node-container:has(.canvas-node-content.media-embed.video-embed) {
+	background-color: transparent;
+	border-radius: 0;
+}
+
+.canvas-node-content.image-embed,
+.canvas-node-content.media-embed:not(.audio-embed) {
+	display: block;
+	width: 100%;
+	height: 100%;
+	padding: 0;
+	overflow: hidden;
+	background: transparent;
+}
+
+.canvas-node-content.image-embed img,
+.canvas-node-content.media-embed:not(.audio-embed) img,
+.canvas-node-content.media-embed.video-embed video {
+	display: block;
+	width: 100%;
+	height: 100%;
+	max-width: none;
 	object-fit: cover;
 }
 
+/* Audio embed nodes: Obsidian draws a border on WebKit's native player chrome */
+.canvas-node-content.media-embed audio {
+	border: none;
+	outline: none;
+}
+
+.canvas-node-content.media-embed audio::-webkit-media-controls-enclosure {
+	border: none;
+	background-color: transparent;
+}
+
+/* Typography + hover color only — show/hide follows Obsidian mod-hover-label */
+.canvas-node.bragi-media-node .canvas-node-label {
+	color: var(--bragi-edge-default);
+	font-size: var(--bragi-media-label-size);
+	line-height: 1.2;
+	font-weight: 400;
+	font-synthesis: none;
+}
+
+.canvas-node.bragi-media-node .bragi-media-meta-label {
+	left: auto;
+	right: 0;
+	transform-origin: bottom right;
+}
+
+@media (hover: hover) {
+	.canvas-node.bragi-media-node:hover .canvas-node-label {
+		color: var(--bragi-media-label-hover);
+	}
+}
+
 /* ── Bragi Canvas — Canvas Edge (connection lines) ──────────────────── */
+/*
+ * Default edges: --bragi-edge-default. User-set colors (mod-canvas-color-*):
+ * rgb(var(--canvas-color)) — preserved on hover, select, and node-connected.
+ */
 
-.canvas-display-path {
-	stroke-width: 1.5px;
+.workspace-leaf-content[data-type='canvas'] .canvas-edges path.canvas-display-path {
+	stroke: var(--bragi-edge-default) !important;
+	stroke-width: 2px !important;
 	filter: none;
+	transition: stroke 100ms ease-out !important;
 }
 
-/* Interaction path: always transparent */
-.canvas-interaction-path {
-	stroke: transparent;
+.workspace-leaf-content[data-type='canvas'] svg.canvas-edges .canvas-path-end {
+	stroke: var(--bragi-edge-default) !important;
+	fill: var(--bragi-edge-default) !important;
 }
 
-/* Hover: accent color, no fill */
-.is-hovered > .canvas-display-path,
-g:hover > .canvas-display-path {
-	stroke: var(--interactive-accent);
-	stroke-width: 2px;
+/* User-set edge color */
+.workspace-leaf-content[data-type='canvas'] .canvas-edges g[class*='mod-canvas-color-'] path.canvas-display-path {
+	stroke: rgb(var(--canvas-color)) !important;
 }
 
-/* Selected / focused: accent color */
-.is-focused > .canvas-display-path {
-	stroke: var(--interactive-accent);
-	stroke-width: 2px;
+.workspace-leaf-content[data-type='canvas'] .canvas-edges g[class*='mod-canvas-color-'] .canvas-path-end {
+	stroke: rgb(var(--canvas-color)) !important;
+	fill: rgb(var(--canvas-color)) !important;
 }
 
-/* Arrow marker: follow accent color on hover/select */
-.canvas-edges marker path {
-	fill: inherit;
+.workspace-leaf-content[data-type='canvas'] .canvas-edges path.canvas-interaction-path {
+	stroke: transparent !important;
+	stroke-opacity: 0 !important;
+	transition: none !important;
 }
 
-/* Connected edges: highlight when node is selected */
-.bragi-edge-connected > .canvas-display-path {
-	stroke: var(--interactive-accent);
-	stroke-width: 2px;
+/* Hover — accent for default edges only */
+.workspace-leaf-content[data-type='canvas'] .canvas:not(.is-connecting) .canvas-edges g:not(.is-focused):not(.bragi-edge-connected):not([class*='mod-canvas-color-']):hover path.canvas-display-path,
+.workspace-leaf-content[data-type='canvas'] .bragi-edge-hovered:not(.is-focused):not(.bragi-edge-connected):not([class*='mod-canvas-color-']) path.canvas-display-path {
+	stroke: hsla(var(--color-accent-hsl), 0.55) !important;
+	stroke-width: 2px !important;
 }
 
-/* ── Bragi Canvas Menu — button order ──
-   Layout: gen icons | separator | builtins + pin/grid | more */
+.workspace-leaf-content[data-type='canvas'] .canvas:not(.is-connecting) .canvas-edges g:not(.is-focused):not(.bragi-edge-connected):hover path.canvas-interaction-path,
+.workspace-leaf-content[data-type='canvas'] .bragi-edge-hovered:not(.is-focused):not(.bragi-edge-connected) path.canvas-interaction-path {
+	stroke: transparent !important;
+	stroke-opacity: 0 !important;
+}
 
-.bragi-canvas-menu .bragi-gen-image,
-.bragi-canvas-menu .bragi-gen-video,
-.bragi-canvas-menu .bragi-gen-text,
-.bragi-canvas-menu .bragi-gen-audio,
-.bragi-canvas-menu .bragi-stt,
-.bragi-canvas-menu .bragi-isolate { order: 1; }
+/* Selected / node-connected — accent for default edges only */
+.workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.is-focused:not([class*='mod-canvas-color-']) path.canvas-display-path,
+.workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.is-focused:not([class*='mod-canvas-color-']):hover path.canvas-display-path,
+.workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.bragi-edge-connected:not([class*='mod-canvas-color-']) path.canvas-display-path,
+.workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.bragi-edge-connected:not([class*='mod-canvas-color-']):hover path.canvas-display-path {
+	stroke: var(--color-accent) !important;
+	stroke-width: 2px !important;
+}
 
-.bragi-canvas-menu .bragi-more { order: 99; }
+.workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.is-focused:not([class*='mod-canvas-color-']) path.canvas-interaction-path,
+.workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.is-focused:not([class*='mod-canvas-color-']):hover path.canvas-interaction-path,
+.workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.bragi-edge-connected:not([class*='mod-canvas-color-']) path.canvas-interaction-path,
+.workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.bragi-edge-connected:not([class*='mod-canvas-color-']):hover path.canvas-interaction-path {
+	stroke: transparent !important;
+	stroke-opacity: 0 !important;
+}
+
+.workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.is-focused:not([class*='mod-canvas-color-']) .canvas-path-end,
+.workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.is-focused:not([class*='mod-canvas-color-']):hover .canvas-path-end,
+.workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.bragi-edge-connected:not([class*='mod-canvas-color-']) .canvas-path-end,
+.workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.bragi-edge-connected:not([class*='mod-canvas-color-']):hover .canvas-path-end {
+	stroke: var(--color-accent) !important;
+	fill: var(--color-accent) !important;
+}
+
+.workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.bragi-edge-hovered:not(.is-focused):not(.bragi-edge-connected):not([class*='mod-canvas-color-']) .canvas-path-end {
+	stroke: hsla(var(--color-accent-hsl), 0.55) !important;
+	fill: hsla(var(--color-accent-hsl), 0.55) !important;
+}
+
+/* ── Bragi toolbar elevation (shared) ─────────────────────────────── */
 
 /* ── Bragi Canvas — Canvas Selection Menu Override ──────────────────── */
 
 /* Override border-radius, shadow, and icon color to match Figma design */
 .bragi-canvas-menu {
 	border-radius: 8px;
-	border: 1px solid var(--background-modifier-border);
-	box-shadow: 0 1px 8px rgba(0, 0, 0, 0.04);
+	border: 1px solid var(--bragi-border);
+	box-shadow: var(--bragi-shadow-sm);
+	background: var(--bragi-surface);
 }
 
 .bragi-canvas-menu .clickable-icon {
-	order: 3;
-	color: var(--text-normal);
+	color: var(--bragi-text);
 	--icon-size: 20px;
 }
 
-.theme-dark .bragi-canvas-menu .clickable-icon {
-	color: #ffffff;
-}
 
-/* Separator line between native + Bragi icons */
+/* Separator line between generation + native icons */
 .bragi-canvas-menu .bragi-separator {
-	order: 2;
 	width: 1px;
 	height: 20px;
 	margin: 0 2px;
 	align-self: center;
-	background-color: var(--background-modifier-border);
+	background-color: var(--bragi-border);
 	flex-shrink: 0;
 }
 
@@ -170,41 +653,118 @@ g:hover > .canvas-display-path {
 /* Each control group: match the toolbar style */
 .canvas-control-group {
 	border-radius: 8px;
-	border: 1px solid var(--background-modifier-border);
-	box-shadow: 0 1px 8px rgba(0, 0, 0, 0.04);
-	background: var(--background-primary);
+	border: 1px solid var(--bragi-border);
+	box-shadow: var(--bragi-shadow-sm);
+	background: var(--bragi-surface);
 }
 
 .canvas-control-group .clickable-icon,
 .canvas-control-group .canvas-control-item {
-	color: var(--text-normal);
+	color: var(--bragi-text);
 	--icon-size: 20px;
 }
 
-.theme-dark .canvas-control-group .clickable-icon,
-.theme-dark .canvas-control-group .canvas-control-item {
-	color: #ffffff;
-}
 
 /* ── Bragi Canvas — Canvas Card Menu (bottom) ─────────────────────────── */
 
 .canvas-card-menu {
-	border-radius: 12px;
-	border: 1px solid var(--background-modifier-border);
-	box-shadow: 0 1px 8px rgba(0, 0, 0, 0.04);
-	background: var(--background-primary);
-	gap: 12px;
-	padding: 8px 12px;
+	border-radius: 14px;
+	border: 1px solid var(--bragi-border);
+	box-shadow: var(--bragi-shadow-sm);
+	background: var(--bragi-surface);
+	gap: 10px;
+	padding: 6px;
+	align-items: center;
+	pointer-events: auto;
+}
+
+.canvas-wrapper.bragi-canvas-hand-tool .canvas-card-menu {
+	z-index: var(--layer-modal);
 }
 
 .canvas-card-menu .canvas-card-menu-button {
-	color: var(--text-normal);
-	padding: 4px;
+	color: var(--bragi-text);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	border: 0;
+	border-radius: 8px;
+	box-sizing: border-box;
+	box-shadow: none;
+	transition: background-color 0.15s ease, color 0.15s ease;
+	cursor: pointer;
+}
+
+.canvas-card-menu .canvas-card-menu-button:hover {
+	background-color: var(--bragi-hover);
+	color: var(--bragi-text);
+	transform: none;
+	box-shadow: none;
+}
+
+.canvas-card-menu .canvas-card-menu-button:active {
+	background-color: var(--bragi-active);
+	color: var(--bragi-text);
+	transform: none;
+	box-shadow: none;
+}
+
+.canvas-card-menu .canvas-card-menu-button.mod-draggable {
+	cursor: grab;
+}
+
+.canvas-card-menu .canvas-card-menu-button.mod-draggable:active {
+	cursor: grabbing;
+}
+
+.canvas-card-menu .canvas-card-menu-button.mod-draggable svg {
+	transition: none;
+	fill: none;
+}
+
+@media (hover: hover) {
+	.canvas-card-menu .canvas-card-menu-button:hover {
+		color: var(--bragi-text);
+	}
+
+	.canvas-card-menu .canvas-card-menu-button.mod-draggable:hover svg {
+		transform: none;
+		filter: none;
+	}
 }
 
 .canvas-card-menu .canvas-card-menu-button .svg-icon {
 	width: 24px;
 	height: 24px;
+	color: inherit;
+}
+
+.canvas-card-menu .canvas-card-menu-button.bragi-interaction-tool.is-active {
+	background-color: var(--bragi-accent);
+	color: var(--bragi-accent-text);
+}
+
+@media (hover: hover) {
+	.canvas-card-menu .canvas-card-menu-button.bragi-interaction-tool.is-active:hover {
+		background-color: var(--bragi-accent-hover);
+		color: var(--bragi-accent-text);
+	}
+}
+
+.canvas-card-menu .canvas-card-menu-button.bragi-interaction-tool.is-active:active {
+	background-color: var(--bragi-accent);
+	color: var(--bragi-accent-text);
+}
+
+.canvas-wrapper.bragi-canvas-hand-tool {
+	cursor: grab;
+}
+
+.canvas-wrapper.bragi-canvas-hand-tool.is-dragging {
+	cursor: grabbing;
 }
 
 .canvas-card-menu .bragi-card-extra {
@@ -214,10 +774,19 @@ g:hover > .canvas-display-path {
 .canvas-card-menu .bragi-card-separator {
 	width: 1px;
 	height: 20px;
-	margin: 0 2px;
+	margin: 0;
 	align-self: center;
-	background-color: var(--background-modifier-border);
+	background-color: var(--bragi-border);
 	flex-shrink: 0;
+}
+
+/* Obsidian dark theme forces card-menu to --background-secondary; keep all canvas toolbars on bragi-surface */
+.theme-dark .canvas-card-menu {
+	background-color: var(--bragi-surface);
+}
+
+.theme-dark .canvas-card-menu .canvas-card-menu-button svg {
+	fill: none;
 }
 
 /* ── Bragi Canvas — Generate Bar ── */
@@ -228,10 +797,10 @@ g:hover > .canvas-display-path {
 	align-items: center;
 	gap: 72px;
 	padding: 2px 3px 2px 2px;
-	background: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
+	background: var(--bragi-surface);
+	border: 1px solid var(--bragi-border);
 	border-radius: 8px;
-	box-shadow: 0 1px 8px rgba(0, 0, 0, 0.04);
+	box-shadow: var(--bragi-shadow-sm);
 	white-space: nowrap;
 	font-size: 13px;
 	z-index: 50;
@@ -260,14 +829,14 @@ g:hover > .canvas-display-path {
 	border-radius: 4px;
 	background: transparent url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='rgba(0,0,0,0.4)' stroke-width='1' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 6px center;
 	box-shadow: none;
-	color: var(--text-normal);
+	color: var(--bragi-text);
 	font-size: 13px;
 	cursor: pointer;
 	outline: 0;
 }
 
 .bragi-bar-select:hover {
-	background-color: var(--background-modifier-hover);
+	background-color: var(--bragi-hover);
 	border: 0;
 	box-shadow: none;
 }
@@ -296,7 +865,7 @@ g:hover > .canvas-display-path {
 	border: 0;
 	border-radius: 4px;
 	background: transparent url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='rgba(0,0,0,0.4)' stroke-width='1' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 6px center;
-	color: var(--text-normal);
+	color: var(--bragi-text);
 	font-size: 13px;
 	line-height: 1.2;
 	box-shadow: none;
@@ -308,7 +877,7 @@ g:hover > .canvas-display-path {
 }
 
 .bragi-generate-bar button.bragi-bar-voice-btn:hover {
-	background-color: var(--background-modifier-hover);
+	background-color: var(--bragi-hover);
 	border: 0;
 	box-shadow: none;
 }
@@ -321,26 +890,39 @@ g:hover > .canvas-display-path {
 	outline: 0;
 }
 
-.bragi-bar-run {
+.bragi-generate-bar button.bragi-bar-run {
+	-webkit-appearance: none;
+	appearance: none;
 	padding: 8px 12px;
-	border: none;
+	border: 0;
 	border-radius: 6px;
-	background: #161616;
-	color: #ffffff;
+	background: var(--bragi-accent);
+	color: var(--bragi-accent-text);
 	font-size: 12px;
 	box-shadow: none;
+	outline: 0;
 	height: auto;
 	align-self: center;
 	line-height: 1;
 	cursor: pointer;
-	transition: opacity 0.15s;
+	transition: opacity 0.15s ease, background-color 0.15s ease;
 }
 
-.bragi-bar-run:hover {
-	opacity: 0.85;
-	background: #161616;
-	color: #ffffff;
+.bragi-generate-bar button.bragi-bar-run:hover {
+	background: var(--bragi-accent-hover);
+	color: var(--bragi-accent-text);
+	border: 0;
 	box-shadow: none;
+}
+
+.bragi-generate-bar button.bragi-bar-run:focus,
+.bragi-generate-bar button.bragi-bar-run:focus-visible,
+.bragi-generate-bar button.bragi-bar-run:active {
+	background: var(--bragi-accent-hover);
+	color: var(--bragi-accent-text);
+	border: 0;
+	box-shadow: none;
+	outline: 0;
 }
 
 /* Bragi Canvas — Upstream Audio Reference Strip */
@@ -359,7 +941,7 @@ g:hover > .canvas-display-path {
 }
 
 .bragi-audio-ref-strip::-webkit-scrollbar-thumb {
-	background: var(--background-modifier-border);
+	background: var(--bragi-border);
 	border-radius: 2px;
 }
 
@@ -369,7 +951,7 @@ g:hover > .canvas-display-path {
 	padding: 8px;
 	width: 100px;
 	border-radius: 6px;
-	background: var(--background-modifier-hover);
+	background: var(--bragi-hover);
 	display: flex;
 	align-items: center;
 	gap: 6px;
@@ -378,7 +960,7 @@ g:hover > .canvas-display-path {
 
 .theme-light .bragi-audio-ref-wrapper,
 .theme-light .bragi-text-ref-row {
-	background: #f6f6f6;
+	background: var(--bragi-surface-muted);
 }
 
 .bragi-audio-ref-wrapper:active {
@@ -397,7 +979,7 @@ g:hover > .canvas-display-path {
 .bragi-audio-ref-label {
 	flex: 1;
 	font-size: 10px;
-	color: var(--text-normal);
+	color: var(--bragi-text);
 	line-height: 1.2;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -464,12 +1046,12 @@ g:hover > .canvas-display-path {
 	gap: 6px;
 	padding: 8px;
 	border-radius: 6px;
-	background: var(--background-modifier-hover);
+	background: var(--bragi-hover);
 	cursor: default;
 }
 
 .bragi-text-ref-row.is-dragging { opacity: 0.3; }
-.bragi-text-ref-row.drag-over { outline: 1px solid var(--interactive-accent); }
+.bragi-text-ref-row.drag-over { outline: 1px solid var(--bragi-accent); }
 
 .bragi-text-ref-handle {
 	cursor: grab;
@@ -486,7 +1068,7 @@ g:hover > .canvas-display-path {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	font-size: 10px;
-	color: var(--text-normal);
+	color: var(--bragi-text);
 }
 
 /* Bragi Canvas — Reference Image Strip (inside text node) */
@@ -511,7 +1093,7 @@ g:hover > .canvas-display-path {
 }
 
 .bragi-ref-strip::-webkit-scrollbar-thumb {
-	background: var(--background-modifier-border);
+	background: var(--bragi-border);
 	border-radius: 2px;
 }
 
@@ -550,7 +1132,7 @@ g:hover > .canvas-display-path {
 	height: 14px;
 	border-radius: 4px;
 	background: rgba(0, 0, 0, 0.1);
-	color: #ffffff;
+	color: var(--bragi-accent-text);
 	font-size: 10px;
 	font-weight: 700;
 	display: flex;
@@ -586,23 +1168,12 @@ g:hover > .canvas-display-path {
 	background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='rgba(255,255,255,0.4)' stroke-width='1' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
-/* Run button: invert in dark mode */
-.theme-dark .bragi-bar-run {
-	background: #ffffff;
-	color: #161616;
-}
-
-.theme-dark .bragi-bar-run:hover {
-	background: #ffffff;
-	color: #161616;
-}
-
 /* ── Bragi Canvas — Settings Page ─────────────────────────────────── */
 
 .bragi-model-group h4 {
 	margin: 16px 0 8px;
 	font-size: 14px;
-	color: var(--text-muted);
+	color: var(--bragi-text-muted);
 }
 
 .bragi-model-list {
@@ -617,12 +1188,12 @@ g:hover > .canvas-display-path {
 	gap: 8px;
 	padding: 6px 8px;
 	border-radius: 6px;
-	background: var(--background-secondary);
+	background: var(--bragi-surface-muted);
 	transition: background 0.1s;
 }
 
 .bragi-model-row:hover {
-	background: var(--background-modifier-hover);
+	background: var(--bragi-hover);
 }
 
 .bragi-model-row.is-dragging {
@@ -630,12 +1201,12 @@ g:hover > .canvas-display-path {
 }
 
 .bragi-model-row.drag-over {
-	border-top: 2px solid var(--interactive-accent);
+	border-top: 2px solid var(--bragi-accent);
 }
 
 .bragi-drag-handle {
 	cursor: grab;
-	color: var(--text-faint);
+	color: var(--bragi-text-faint);
 	font-size: 14px;
 	user-select: none;
 	line-height: 1;
@@ -658,7 +1229,7 @@ g:hover > .canvas-display-path {
 	width: 36px;
 	height: 20px;
 	border-radius: 10px;
-	background: var(--background-modifier-border);
+	background: var(--bragi-border);
 	cursor: pointer;
 	position: relative;
 	transition: background 0.2s;
@@ -666,7 +1237,7 @@ g:hover > .canvas-display-path {
 }
 
 .bragi-model-toggle.is-on {
-	background: var(--interactive-accent);
+	background: var(--bragi-accent);
 }
 
 .bragi-model-toggle.is-disabled {
@@ -703,7 +1274,7 @@ g:hover > .canvas-display-path {
 	width: 80px;
 	height: 4px;
 	border-radius: 2px;
-	background: var(--background-modifier-border);
+	background: var(--bragi-border);
 	cursor: pointer;
 	outline: none;
 }
@@ -713,15 +1284,15 @@ g:hover > .canvas-display-path {
 	width: 14px;
 	height: 14px;
 	border-radius: 50%;
-	background: var(--interactive-accent);
-	border: 2px solid var(--background-primary);
-	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+	background: var(--bragi-accent);
+	border: 2px solid var(--bragi-surface);
+	box-shadow: var(--bragi-shadow-md);
 	cursor: pointer;
 }
 
 .bragi-bar-range-value {
 	font-size: 11px;
-	color: var(--text-muted);
+	color: var(--bragi-text-muted);
 	min-width: 30px;
 }
 
@@ -734,8 +1305,8 @@ g:hover > .canvas-display-path {
 	width: 8px;
 	height: 8px;
 	border-radius: 50%;
-	background: var(--interactive-accent);
-	border: 1.5px solid var(--background-primary);
+	background: var(--bragi-accent);
+	border: 1.5px solid var(--bragi-surface);
 }
 
 /* Asset ID popup */
@@ -744,10 +1315,10 @@ g:hover > .canvas-display-path {
 	top: calc(100% + 4px);
 	left: 50%;
 	transform: translateX(-50%);
-	background: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
+	background: var(--bragi-surface);
+	border: 1px solid var(--bragi-border);
 	border-radius: 6px;
-	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+	box-shadow: var(--bragi-shadow-md);
 	padding: 8px;
 	z-index: 100;
 	width: 200px;
@@ -756,23 +1327,23 @@ g:hover > .canvas-display-path {
 
 .bragi-asset-label {
 	font-size: 11px;
-	color: var(--text-muted);
+	color: var(--bragi-text-muted);
 	margin-bottom: 4px;
 }
 
 .bragi-asset-input {
 	width: 100%;
 	padding: 4px 6px;
-	border: 1px solid var(--background-modifier-border);
+	border: 1px solid var(--bragi-border);
 	border-radius: 4px;
 	font-size: 12px;
-	background: var(--background-primary);
-	color: var(--text-normal);
+	background: var(--bragi-surface);
+	color: var(--bragi-text);
 	margin-bottom: 6px;
 }
 
 .bragi-asset-input:focus {
-	border-color: var(--interactive-accent);
+	border-color: var(--bragi-accent);
 	outline: none;
 }
 
@@ -786,18 +1357,18 @@ g:hover > .canvas-display-path {
 	padding: 3px 8px;
 	border: none;
 	border-radius: 4px;
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
+	background: var(--bragi-accent);
+	color: var(--bragi-accent-text);
 	font-size: 11px;
 	cursor: pointer;
 }
 
 .bragi-asset-clear {
 	padding: 3px 8px;
-	border: 1px solid var(--background-modifier-border);
+	border: 1px solid var(--bragi-border);
 	border-radius: 4px;
 	background: transparent;
-	color: var(--text-muted);
+	color: var(--bragi-text-muted);
 	font-size: 11px;
 	cursor: pointer;
 }
@@ -809,10 +1380,10 @@ g:hover > .canvas-display-path {
 	z-index: 1000;
 	min-width: 180px;
 	padding: 4px;
-	background: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
+	background: var(--bragi-surface);
+	border: 1px solid var(--bragi-border);
 	border-radius: 8px;
-	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+	box-shadow: var(--bragi-shadow-lg);
 	display: flex;
 	flex-direction: column;
 	gap: 2px;
@@ -825,12 +1396,12 @@ g:hover > .canvas-display-path {
 	padding: 6px 10px;
 	border-radius: 6px;
 	cursor: pointer;
-	color: var(--text-normal);
+	color: var(--bragi-text);
 	user-select: none;
 }
 
 .bragi-more-dropdown-item:hover {
-	background: var(--background-modifier-hover);
+	background: var(--bragi-hover);
 }
 
 .bragi-more-dropdown-icon {
@@ -858,10 +1429,10 @@ g:hover > .canvas-display-path {
 .bragi-native-align-menu {
 	min-width: 180px;
 	padding: 6px;
-	background: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
+	background: var(--bragi-surface);
+	border: 1px solid var(--bragi-border);
 	border-radius: 8px;
-	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+	box-shadow: var(--bragi-shadow-lg);
 }
 
 .bragi-native-align-menu .menu-grabber {
@@ -888,13 +1459,13 @@ g:hover > .canvas-display-path {
 	gap: 10px;
 	padding: 6px 10px;
 	border-radius: 6px;
-	color: var(--text-normal);
+	color: var(--bragi-text);
 	cursor: pointer;
 }
 
 .bragi-native-align-menu .menu-item:hover,
 .bragi-native-align-menu .menu-item.selected {
-	background: var(--background-modifier-hover);
+	background: var(--bragi-hover);
 }
 
 .bragi-native-align-menu .menu-item-icon {
@@ -920,7 +1491,7 @@ g:hover > .canvas-display-path {
 .bragi-native-align-menu .menu-separator {
 	height: 1px;
 	margin: 4px 0;
-	background: var(--background-modifier-border);
+	background: var(--bragi-border);
 	border: none;
 }
 
@@ -928,7 +1499,7 @@ g:hover > .canvas-display-path {
 
 /* Dividers between rows (not gaps) — override native transparent border */
 .bragi-r2-group .setting-items .setting-item + .setting-item {
-	border-top: 1px solid var(--background-modifier-border);
+	border-top: 1px solid var(--bragi-border);
 }
 
 /* Pair two text inputs side-by-side within a single .setting-item-control */
@@ -947,11 +1518,11 @@ g:hover > .canvas-display-path {
 
 /* Canvas background overrides */
 .theme-light .canvas-wrapper {
-	background-color: #f5f5f5;
+	background-color: var(--bragi-canvas-bg);
 }
 
 .theme-dark .canvas-wrapper {
-	background-color: rgb(25, 25, 25);
+	background-color: var(--bragi-canvas-bg);
 }
 
 /* Dotted grid dots: 40% opacity */
@@ -962,7 +1533,7 @@ g:hover > .canvas-display-path {
 /* ── Settings: registry-driven providers + models ────────────────────── */
 
 .bragi-empty-hint {
-	color: var(--text-muted);
+	color: var(--bragi-text-muted);
 	padding: 8px 0;
 	margin: 0;
 }
@@ -980,7 +1551,7 @@ g:hover > .canvas-display-path {
 	gap: 12px;
 	padding: 10px 12px;
 	border-radius: 8px;
-	background: var(--background-secondary);
+	background: var(--bragi-surface-muted);
 }
 
 .bragi-provider-info {
@@ -989,12 +1560,12 @@ g:hover > .canvas-display-path {
 }
 
 .bragi-provider-name {
-	color: var(--text-normal);
+	color: var(--bragi-text);
 }
 
 .bragi-provider-desc {
 	font-size: 12px;
-	color: var(--text-muted);
+	color: var(--bragi-text-muted);
 	margin-top: 2px;
 }
 
@@ -1010,15 +1581,15 @@ g:hover > .canvas-display-path {
 	cursor: pointer;
 	padding: 4px;
 	border-radius: 4px;
-	color: var(--text-muted);
+	color: var(--bragi-text-muted);
 	display: flex;
 	align-items: center;
 	justify-content: center;
 }
 
 .bragi-icon-btn:hover {
-	background: var(--background-modifier-hover);
-	color: var(--text-normal);
+	background: var(--bragi-hover);
+	color: var(--bragi-text);
 }
 
 .bragi-add-btn {
@@ -1026,7 +1597,7 @@ g:hover > .canvas-display-path {
 	border: none;
 	border-radius: 8px;
 	padding: 8px 14px;
-	color: var(--text-muted);
+	color: var(--bragi-text-muted);
 	cursor: pointer;
 	width: 100%;
 	transition: all 0.12s ease;
@@ -1035,8 +1606,8 @@ g:hover > .canvas-display-path {
 }
 
 .bragi-add-btn:hover {
-	background: var(--background-modifier-hover);
-	color: var(--text-normal);
+	background: var(--bragi-hover);
+	color: var(--bragi-text);
 }
 
 /* Model row: existing styles handle layout; just add × button alignment */
@@ -1049,10 +1620,10 @@ g:hover > .canvas-display-path {
 .bragi-add-modal-search {
 	width: 100%;
 	padding: 8px 12px;
-	border: 1px solid var(--background-modifier-border);
+	border: 1px solid var(--bragi-border);
 	border-radius: 6px;
-	background: var(--background-primary);
-	color: var(--text-normal);
+	background: var(--bragi-surface);
+	color: var(--bragi-text);
 	margin: 0 0 var(--size-4-4) 0;
 }
 
@@ -1069,7 +1640,7 @@ g:hover > .canvas-display-path {
 	align-items: center;
 	gap: 12px;
 	padding: 10px 12px;
-	border: 1px solid var(--background-modifier-border);
+	border: 1px solid var(--bragi-border);
 	border-radius: 8px;
 }
 
@@ -1079,17 +1650,17 @@ g:hover > .canvas-display-path {
 }
 
 .bragi-add-modal-row-name {
-	color: var(--text-normal);
+	color: var(--bragi-text);
 }
 
 .bragi-add-modal-row-desc {
 	font-size: 12px;
-	color: var(--text-muted);
+	color: var(--bragi-text-muted);
 	margin-top: 2px;
 }
 
 .bragi-add-modal-doclink {
-	color: var(--interactive-accent);
+	color: var(--bragi-accent);
 	font-size: 12px;
 	margin-left: 6px;
 }
@@ -1128,14 +1699,14 @@ g:hover > .canvas-display-path {
 	box-shadow: none;
 	padding: 4px;
 	cursor: pointer;
-	color: var(--text-muted);
+	color: var(--bragi-text-muted);
 	display: flex;
 	align-items: center;
 	justify-content: center;
 }
 
 .bragi-eye-btn:hover {
-	color: var(--text-normal);
+	color: var(--bragi-text);
 }
 
 .bragi-eye-btn .svg-icon {
@@ -1185,10 +1756,10 @@ g:hover > .canvas-display-path {
 .bragi-voice-search {
 	width: 100%;
 	padding: 8px 12px;
-	border: 1px solid var(--background-modifier-border);
+	border: 1px solid var(--bragi-border);
 	border-radius: 6px;
-	background: var(--background-primary);
-	color: var(--text-normal);
+	background: var(--bragi-surface);
+	color: var(--bragi-text);
 	box-sizing: border-box;
 	box-shadow: none;
 	outline: 0;
@@ -1198,8 +1769,8 @@ g:hover > .canvas-display-path {
 .bragi-voice-search:focus-visible,
 .bragi-voice-filter:focus,
 .bragi-voice-filter:focus-visible {
-	border-color: var(--interactive-accent);
-	box-shadow: inset 0 0 0 1px var(--interactive-accent);
+	border-color: var(--bragi-accent);
+	box-shadow: inset 0 0 0 1px var(--bragi-accent);
 	outline: 0;
 }
 
@@ -1215,16 +1786,16 @@ g:hover > .canvas-display-path {
 	min-width: 0;
 	padding: 5px 8px;
 	border-radius: 6px;
-	border: 1px solid var(--background-modifier-border);
-	background: var(--background-primary);
-	color: var(--text-normal);
+	border: 1px solid var(--bragi-border);
+	background: var(--bragi-surface);
+	color: var(--bragi-text);
 	box-sizing: border-box;
 	box-shadow: none;
 	outline: 0;
 }
 
 .bragi-voice-filter:hover {
-	border-color: var(--background-modifier-border);
+	border-color: var(--bragi-border);
 	box-shadow: none;
 }
 
@@ -1242,13 +1813,13 @@ g:hover > .canvas-display-path {
 	align-items: center;
 	gap: 12px;
 	padding: 10px 12px;
-	border: 1px solid var(--background-modifier-border);
+	border: 1px solid var(--bragi-border);
 	border-radius: 8px;
-	background: var(--background-primary);
+	background: var(--bragi-surface);
 }
 
 .bragi-voice-row.is-selected {
-	border-color: var(--interactive-accent);
+	border-color: var(--bragi-accent);
 }
 
 .bragi-voice-info {
@@ -1260,7 +1831,7 @@ g:hover > .canvas-display-path {
 	display: flex;
 	align-items: center;
 	gap: 6px;
-	color: var(--text-normal);
+	color: var(--bragi-text);
 	font-weight: 500;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -1270,7 +1841,7 @@ g:hover > .canvas-display-path {
 .bragi-voice-desc {
 	margin-top: 2px;
 	font-size: 12px;
-	color: var(--text-muted);
+	color: var(--bragi-text-muted);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -1286,8 +1857,8 @@ g:hover > .canvas-display-path {
 .bragi-voice-badge {
 	padding: 1px 6px;
 	border-radius: 4px;
-	background: var(--background-modifier-hover);
-	color: var(--text-muted);
+	background: var(--bragi-hover);
+	color: var(--bragi-text-muted);
 	font-size: 11px;
 }
 
@@ -1304,10 +1875,10 @@ g:hover > .canvas-display-path {
 	padding: 4px;
 	border: 0;
 	border-radius: 4px;
-	background: var(--background-primary);
+	background: var(--bragi-surface);
 	box-shadow: none;
 	outline: 0;
-	color: var(--text-muted);
+	color: var(--bragi-text-muted);
 }
 
 .bragi-voice-picker-modal button.bragi-voice-preview:hover,
@@ -1315,10 +1886,10 @@ g:hover > .canvas-display-path {
 .bragi-voice-picker-modal button.bragi-voice-preview:focus-visible,
 .bragi-voice-picker-modal button.bragi-voice-preview:active {
 	border: 0;
-	background: var(--background-modifier-hover);
+	background: var(--bragi-hover);
 	box-shadow: none;
 	outline: 0;
-	color: var(--text-normal);
+	color: var(--bragi-text);
 }
 
 .bragi-voice-picker-modal button.bragi-voice-preview:disabled {
@@ -1333,7 +1904,7 @@ g:hover > .canvas-display-path {
 
 .bragi-voice-empty {
 	padding: 24px 8px;
-	color: var(--text-muted);
+	color: var(--bragi-text-muted);
 	text-align: center;
 }
 
@@ -1366,17 +1937,17 @@ g:hover > .canvas-display-path {
 .bragi-add-model-search {
 	flex: 1;
 	padding: 8px 12px;
-	border: 1px solid var(--background-modifier-border);
+	border: 1px solid var(--bragi-border);
 	border-radius: 6px;
-	background: var(--background-primary);
-	color: var(--text-normal);
+	background: var(--bragi-surface);
+	color: var(--bragi-text);
 }
 
 .bragi-add-model-section-label {
 	font-size: 11px;
 	text-transform: uppercase;
 	letter-spacing: 0.06em;
-	color: var(--text-muted);
+	color: var(--bragi-text-muted);
 	padding: 8px 0 4px 4px;
 	margin-top: 4px;
 }
@@ -1390,7 +1961,7 @@ g:hover > .canvas-display-path {
 .bragi-add-model-card {
 	border-radius: 8px;
 	padding: 10px 12px;
-	background: var(--background-secondary);
+	background: var(--bragi-surface-muted);
 	display: flex;
 	align-items: center;
 	gap: 12px;
@@ -1421,19 +1992,19 @@ g:hover > .canvas-display-path {
 	font-size: 11px;
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
-	color: var(--text-muted);
+	color: var(--bragi-text-muted);
 }
 
 .bragi-add-model-remove {
 	background: transparent;
-	color: var(--text-muted);
+	color: var(--bragi-text-muted);
 	font-size: 12px;
 	cursor: pointer;
 }
 
 .bragi-add-model-remove:hover {
-	background: var(--background-modifier-hover);
-	color: var(--text-error);
+	background: var(--bragi-hover);
+	color: var(--bragi-danger);
 }
 
 .bragi-add-model-badges {
@@ -1448,17 +2019,17 @@ g:hover > .canvas-display-path {
 	font-size: 12px;
 	cursor: default;
 	border: 1px solid transparent;
-	background: var(--background-modifier-border);
-	color: var(--text-muted);
+	background: var(--bragi-border);
+	color: var(--bragi-text-muted);
 	transition: all 0.12s ease;
 	box-shadow: none;
 }
 
 /* ─── Not-added card: configured = accent bg, unconfigured = gray ───── */
 .bragi-add-model-card:not(.is-added) .bragi-add-model-badge.is-configured {
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
-	border-color: var(--interactive-accent);
+	background: var(--bragi-accent);
+	color: var(--bragi-accent-text);
+	border-color: var(--bragi-accent);
 }
 
 .bragi-add-model-card:not(.is-added) .bragi-add-model-badge.is-unconfigured {
@@ -1471,24 +2042,24 @@ g:hover > .canvas-display-path {
 }
 
 .bragi-add-model-card.is-added .bragi-add-model-badge.is-configured.is-active {
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
-	border-color: var(--interactive-accent);
+	background: var(--bragi-accent);
+	color: var(--bragi-accent-text);
+	border-color: var(--bragi-accent);
 }
 
 .bragi-add-model-card.is-added .bragi-add-model-badge.is-configured:not(.is-active) {
-	background: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
-	color: var(--interactive-accent);
+	background: color-mix(in srgb, var(--bragi-accent) 18%, transparent);
+	color: var(--bragi-accent);
 	border-color: transparent;
 }
 
 .bragi-add-model-card.is-added .bragi-add-model-badge.is-configured:not(.is-active):hover {
-	background: color-mix(in srgb, var(--interactive-accent) 28%, transparent);
+	background: color-mix(in srgb, var(--bragi-accent) 28%, transparent);
 }
 
 .bragi-add-model-card.is-added .bragi-add-model-badge.is-unconfigured:hover {
 	opacity: 1;
-	background: var(--background-modifier-hover);
+	background: var(--bragi-hover);
 }
 
 /* ── Hide vault-level _bragi folder from file tree ──────────────────── */
@@ -1511,7 +2082,7 @@ g:hover > .canvas-display-path {
 	height: 600px;
 	max-height: 90vh;
 	padding: 0;
-	background: #000000;
+	background: var(--bragi-pano-bg);
 	border: 0;
 	overflow: hidden;
 }
@@ -1531,7 +2102,7 @@ g:hover > .canvas-display-path {
 
 .bragi-pano-modal .modal-close-button {
 	z-index: 10;
-	color: #ffffff;
+	color: var(--bragi-accent-text);
 	top: 14px;
 	right: 14px;
 }
@@ -1539,12 +2110,12 @@ g:hover > .canvas-display-path {
 .bragi-pano-container {
 	position: absolute;
 	inset: 0;
-	background: #000000;
+	background: var(--bragi-pano-bg);
 	overflow: hidden;
 }
 
 .bragi-pano-container .pnlm-container {
-	background: #000000;
+	background: var(--bragi-pano-bg);
 }
 
 /* Floating bottom action bar — mirror .canvas-card-menu style exactly */
@@ -1557,10 +2128,10 @@ g:hover > .canvas-display-path {
 	align-items: center;
 	gap: 12px;
 	padding: 8px 12px;
-	background: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
+	background: var(--bragi-surface);
+	border: 1px solid var(--bragi-border);
 	border-radius: 12px;
-	box-shadow: 0 1px 8px rgba(0, 0, 0, 0.04);
+	box-shadow: var(--bragi-shadow-sm);
 	z-index: 5;
 }
 
@@ -1571,7 +2142,7 @@ g:hover > .canvas-display-path {
 	padding: 4px;
 	border-radius: 8px;
 	cursor: pointer;
-	color: var(--text-normal);
+	color: var(--bragi-text);
 	user-select: none;
 	transition: background-color 0.12s ease;
 }
@@ -1582,11 +2153,11 @@ g:hover > .canvas-display-path {
 }
 
 .bragi-pano-bar-btn:hover {
-	background: var(--background-modifier-hover);
+	background: var(--bragi-hover);
 }
 
 .bragi-pano-bar-btn.is-active {
-	color: var(--interactive-accent);
+	color: var(--bragi-accent);
 }
 
 .bragi-pano-bar-btn.is-disabled {
@@ -1597,7 +2168,7 @@ g:hover > .canvas-display-path {
 .bragi-pano-bar-sep {
 	width: 1px;
 	height: 20px;
-	background-color: var(--background-modifier-border);
+	background-color: var(--bragi-border);
 	flex-shrink: 0;
 	align-self: center;
 }
@@ -1611,8 +2182,49 @@ g:hover > .canvas-display-path {
 }
 
 .bragi-danger-button {
-	background-color: var(--text-error);
-	color: white;
+	background-color: var(--bragi-danger);
+	color: var(--bragi-danger-text);
+}
+
+/* ── Bragi settings tab + modals ─────────────────────────────────────── */
+
+.bragi-settings .setting-item-name {
+	color: var(--bragi-text);
+}
+
+.bragi-settings .setting-item-description {
+	color: var(--bragi-text-muted);
+}
+
+.bragi-modal .mod-cta {
+	background-color: var(--bragi-accent);
+	color: var(--bragi-accent-text);
+}
+
+.bragi-modal .mod-cta:hover {
+	background-color: var(--bragi-accent-hover);
+}
+
+.bragi-error-details-body {
+	margin: 0;
+	padding: 12px;
+	border-radius: 8px;
+	background: var(--bragi-surface-muted);
+	color: var(--bragi-text);
+	font-family: var(--font-monospace);
+	font-size: 12px;
+	line-height: 1.5;
+	white-space: pre-wrap;
+	word-break: break-word;
+	max-height: min(50vh, 360px);
+	overflow: auto;
+}
+
+.bragi-modal input:focus,
+.bragi-modal textarea:focus,
+.bragi-modal select:focus {
+	border-color: var(--bragi-accent);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--bragi-accent) 25%, transparent);
 }
 
 .bragi-select-measure {

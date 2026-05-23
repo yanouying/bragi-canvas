@@ -37,6 +37,13 @@ export function registerBragiIcons(): void {
 		'<path d="M11.25 5.625H9C7.13604 5.625 5.625 7.13604 5.625 9V11.25M24.75 5.625H27C28.8639 5.625 30.375 7.13604 30.375 9V11.25M30.375 24.75V27C30.375 28.8639 28.8639 30.375 27 30.375H24.75M11.25 30.375H9C7.13604 30.375 5.625 28.8639 5.625 27V24.75M22.5 18C22.5 20.4854 20.4854 22.5 18 22.5C15.5146 22.5 13.5 20.4854 13.5 18C13.5 15.5146 15.5146 13.5 18 13.5C20.4854 13.5 22.5 15.5146 22.5 18Z" stroke="#161616" stroke-width="2" stroke-linejoin="round"/>'
 	))
 
+	// Error details — from errordetailicon.svg
+	addIcon('bragi-error-details', figmaIcon(
+		'<path d="M18 30C24.6274 30 30 24.6274 30 18C30 11.3726 24.6274 6 18 6C11.3726 6 6 11.3726 6 18C6 24.6274 11.3726 30 18 30Z" stroke="black" stroke-width="2" stroke-linejoin="round"/>' +
+		'<path d="M18 22.8V18" stroke="black" stroke-width="2" stroke-linejoin="round"/>' +
+		'<path d="M18 13.2H18.012" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+	))
+
 	// 04 — Edit (pencil)
 	addIcon('bragi-edit', figmaIcon(
 		'<path d="M5.67272 24.4638L4.5 31.5L11.5363 30.3273C12.7582 30.1237 13.8859 29.5434 14.7618 28.6674L30.6297 12.7993C31.7901 11.6388 31.7901 9.75735 30.6296 8.59689L27.403 5.37036C26.2425 4.20987 24.3609 4.20988 23.2003 5.3704L7.33262 21.2385C6.45671 22.1143 5.87636 23.242 5.67272 24.4638Z" stroke="#161616" stroke-width="2" stroke-linejoin="round"/>' +
@@ -173,55 +180,44 @@ export function registerBragiIcons(): void {
 
 	// ── Bottom Bar Icons (card menu) ────────────────────────────────────
 
-	// B01 — Drag to add card (4-corner grid, plus in center)
+	addIcon('bragi-card-cursor', figmaIcon48(
+		'<path d="M20.0938 10.8973L30.8201 15.0946C37.0068 17.5154 40.1001 18.7259 39.9975 20.6459C39.895 22.5661 36.6667 23.4464 30.2102 25.2073C28.2879 25.7316 27.3266 25.9938 26.6601 26.6601C25.9936 27.3266 25.7316 28.2878 25.2072 30.2103C23.4464 36.6667 22.5659 39.8949 20.6459 39.9975C18.7258 40.1001 17.5154 37.0068 15.0945 30.8201L10.8973 20.0938C8.36275 13.6166 7.09548 10.378 8.73674 8.73674C10.378 7.09548 13.6166 8.36275 20.0938 10.8973Z" stroke="black" stroke-width="2.75" stroke-linejoin="round"/>'
+	))
+
+	addIcon('bragi-card-hand', figmaIcon48(
+		'<path d="M22.728 13.8947C22.728 12.4995 21.5884 11.3684 20.1825 11.3684C18.7767 11.3684 17.6371 12.4995 17.6371 13.8947V27.3056L14.8868 24.5674C13.6803 23.3662 11.6931 23.4759 10.6273 24.8022C9.81176 25.8171 9.78924 27.2529 10.5725 28.2925L15.6702 35.0597C16.8271 36.5954 17.4055 37.3632 18.1017 37.9601C19.1637 38.8706 20.4362 39.5042 21.8051 39.8036C22.7023 40 23.6664 40 25.5945 40C29.2711 40 31.1095 40 32.5729 39.4407C34.8109 38.5854 36.5791 36.8249 37.4381 34.5967C38 33.1397 38 31.3095 38 27.6492V23.1579C38 21.2975 36.4812 19.7895 34.6067 19.7895H32.9098M22.728 13.8947V10.5263C22.728 9.13107 23.8676 8 25.2734 8C26.6793 8 27.8189 9.13107 27.8189 10.5263V13.8947M22.728 13.8947V21.4737M32.9098 19.7895V13.8947C32.9098 12.4995 31.7703 11.3684 30.3643 11.3684C28.9585 11.3684 27.8189 12.4995 27.8189 13.8947M32.9098 19.7895V23.1579M27.8189 13.8947V21.4737" stroke="black" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"/>'
+	))
+
 	addIcon('bragi-card-text', figmaIcon48(
-		'<path d="M6 10C6 11.0609 6.42143 12.0783 7.17157 12.8284C7.92172 13.5786 8.93913 14 10 14C11.0609 14 12.0783 13.5786 12.8284 12.8284C13.5786 12.0783 14 11.0609 14 10C14 8.93913 13.5786 7.92172 12.8284 7.17157C12.0783 6.42143 11.0609 6 10 6C8.93913 6 7.92172 6.42143 7.17157 7.17157C6.42143 7.92172 6 8.93913 6 10Z" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
-		'<path d="M34 10C34 11.0609 34.4214 12.0783 35.1716 12.8284C35.9217 13.5786 36.9391 14 38 14C39.0609 14 40.0783 13.5786 40.8284 12.8284C41.5786 12.0783 42 11.0609 42 10C42 8.93913 41.5786 7.92172 40.8284 7.17157C40.0783 6.42143 39.0609 6 38 6C36.9391 6 35.9217 6.42143 35.1716 7.17157C34.4214 7.92172 34 8.93913 34 10Z" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
-		'<path d="M6 38C6 39.0609 6.42143 40.0783 7.17157 40.8284C7.92172 41.5786 8.93913 42 10 42C11.0609 42 12.0783 41.5786 12.8284 40.8284C13.5786 40.0783 14 39.0609 14 38C14 36.9391 13.5786 35.9217 12.8284 35.1716C12.0783 34.4214 11.0609 34 10 34C8.93913 34 7.92172 34.4214 7.17157 35.1716C6.42143 35.9217 6 36.9391 6 38Z" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
-		'<path d="M34 38C34 39.0609 34.4214 40.0783 35.1716 40.8284C35.9217 41.5786 36.9391 42 38 42C39.0609 42 40.0783 41.5786 40.8284 40.8284C41.5786 40.0783 42 39.0609 42 38C42 36.9391 41.5786 35.9217 40.8284 35.1716C40.0783 34.4214 39.0609 34 38 34C36.9391 34 35.9217 34.4214 35.1716 35.1716C34.4214 35.9217 34 36.9391 34 38Z" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
-		'<path d="M10 14V34" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
-		'<path d="M14 10H34" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
-		'<path d="M14 38H34" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
-		'<path d="M38 14V34" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
-		'<path d="M19 21L29 21" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>' +
-		'<path d="M24 30V21" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>'
+		'<path d="M38 14V10H10V14" stroke="black" stroke-width="2.75" stroke-linejoin="round"/>' +
+		'<path d="M24 10V38M24 38H20M24 38H28" stroke="black" stroke-width="2.75" stroke-linejoin="round"/>'
 	))
 
-	// B02 — Drag to add note from vault (document with lines)
 	addIcon('bragi-card-clipboard', figmaIcon48(
-		'<path d="M30 6V14C30 14.5304 30.2107 15.0391 30.5858 15.4142C30.9609 15.7893 31.4696 16 32 16H40" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>' +
-		'<path d="M36 42H12C10.9391 42 9.92172 41.5786 9.17157 40.8284C8.42143 40.0783 8 39.0609 8 38V10C8 8.93913 8.42143 7.92172 9.17157 7.17157C9.92172 6.42143 10.9391 6 12 6H30L40 16V38C40 39.0609 39.5786 40.0783 38.8284 40.8284C38.0783 41.5786 37.0609 42 36 42Z" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>' +
-		'<path d="M16 25H27" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>' +
-		'<path d="M16 33H31" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>'
+		'<path d="M36.8667 18.5333H7" stroke="black" stroke-width="2.75" stroke-linejoin="round"/>' +
+		'<path d="M7 10H36.8667" stroke="black" stroke-width="2.75" stroke-linejoin="round"/>' +
+		'<path d="M26.2 27.0667H7" stroke="black" stroke-width="2.75" stroke-linejoin="round"/>' +
+		'<path d="M7 35.5999H19.8" stroke="black" stroke-width="2.75" stroke-linejoin="round"/>' +
+		'<path d="M34.7333 29.2V42" stroke="black" stroke-width="2.75" stroke-linejoin="round"/>' +
+		'<path d="M28.3333 35.5999H41.1333" stroke="black" stroke-width="2.75" stroke-linejoin="round"/>'
 	))
 
-	// B03 — Drag to add media from vault (picture with plus)
 	addIcon('bragi-card-file', figmaIcon48(
-		'<path d="M24 40.1053H11.6842C10.1767 40.1053 8.73086 39.5064 7.66487 38.4404C6.59887 37.3744 6 35.9286 6 34.4211V11.6842C6 10.1767 6.59887 8.73086 7.66487 7.66487C8.73086 6.59887 10.1767 6 11.6842 6H34.4211C35.9286 6 37.3744 6.59887 38.4404 7.66487C39.5064 8.73086 40.1053 10.1767 40.1053 11.6842V24" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>' +
-		'<path d="M6 30.6316L15.4737 21.1579C17.232 19.4659 19.3996 19.4659 21.1579 21.1579L28.7368 28.7369" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>' +
-		'<path d="M26.842 26.8421L28.7368 24.9474C30.0063 23.7272 31.4841 23.3861 32.8711 23.9242" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>' +
-		'<path d="M30.6316 36.3158H42" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>' +
-		'<path d="M36.3157 30.6316V42" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>'
+		'<path d="M24 38.3158H13.0526C11.7126 38.3158 10.4274 37.7835 9.47988 36.8359C8.53233 35.8884 8 34.6032 8 33.2632V13.0526C8 11.7126 8.53233 10.4274 9.47988 9.47988C10.4274 8.53233 11.7126 8 13.0526 8H33.2632C34.6032 8 35.8884 8.53233 36.8359 9.47988C37.7835 10.4274 38.3158 11.7126 38.3158 13.0526V24" stroke="black" stroke-width="2.75" stroke-linejoin="round"/>' +
+		'<path d="M8 29.8948L16.4211 21.4737C17.984 19.9697 19.9107 19.9697 21.4737 21.4737L28.2105 28.2105" stroke="black" stroke-width="2.75" stroke-linejoin="round"/>' +
+		'<path d="M26.5263 26.5263L28.2105 24.8421C29.3389 23.7575 30.6526 23.4543 31.8855 23.9326" stroke="black" stroke-width="2.75" stroke-linejoin="round"/>' +
+		'<path d="M29.8948 34.9474H40" stroke="black" stroke-width="2.75" stroke-linejoin="round"/>' +
+		'<path d="M34.9474 29.8948V40" stroke="black" stroke-width="2.75" stroke-linejoin="round"/>'
 	))
 
-	// B04 — Export canvas (cube + right arrow)
-	addIcon('bragi-card-export', figmaIcon48(
-		'<path d="M24 42L8 33V15L24 6L40 15V24" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>' +
-		'<path d="M24 24L40 15" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>' +
-		'<path d="M24 24V42" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>' +
-		'<path d="M24 24L8 15" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>' +
-		'<path d="M30 36H44" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>' +
-		'<path d="M38 30L44 36L38 42" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>'
-	))
-
-	// B05 — Import canvas (cube + left arrow)
 	addIcon('bragi-card-import', figmaIcon48(
-		'<path d="M24 42L8 33V15L24 6L40 15V24" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>' +
-		'<path d="M24 24L40 15" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>' +
-		'<path d="M24 24V42" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>' +
-		'<path d="M24 24L8 15" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>' +
-		'<path d="M44 36H30" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>' +
-		'<path d="M36 30L30 36L36 42" stroke="black" stroke-width="2.5" stroke-linejoin="round"/>'
+		'<path d="M8 12.836V9.91798C8 9.4093 8.20207 8.92146 8.56176 8.56176C8.92146 8.20207 9.4093 8 9.91798 8H12.836M19.0284 8H27.6593M33.8517 8H36.7697C37.2784 8 37.7662 8.20207 38.1259 8.56176C38.4856 8.92146 38.6877 9.4093 38.6877 9.91798V12.836M38.6877 18.5079V23.2208M23.7003 38.6877H19.0284M12.836 38.6877H9.91798C9.4093 38.6877 8.92146 38.4856 8.56176 38.1259C8.20207 37.7662 8 37.2784 8 36.7697V33.8517M8 27.1798V19.5079" stroke="black" stroke-width="2.75" stroke-linejoin="round"/>' +
+		'<path d="M29.8948 34.9474H40" stroke="black" stroke-width="2.75" stroke-linejoin="round"/>' +
+		'<path d="M34.9474 29.8948V40" stroke="black" stroke-width="2.75" stroke-linejoin="round"/>'
+	))
+
+	addIcon('bragi-card-export', figmaIcon48(
+		'<path d="M26.8641 8H37.1851C32.8065 10.5021 26.395 17.4765 24.5185 25.358M40 18.4198V34.6667C40 36.0812 39.4381 37.4377 38.4379 38.4379C37.4377 39.4381 36.0812 40 34.6667 40H13.3333C11.9188 40 10.5623 39.4381 9.5621 38.4379C8.5619 37.4377 8 36.0812 8 34.6667L8 13.3333C8 11.9188 8.5619 10.5623 9.5621 9.5621C10.5623 8.5619 11.9188 8 13.3333 8L18.2593 8" stroke="black" stroke-width="2.75"/>'
 	))
 
 	// Panorama: Mirror (flip horizontal)
@@ -256,8 +252,8 @@ export function registerBragiIcons(): void {
 
 	// B06 — Plugin settings (shield with aperture)
 	addIcon('bragi-card-settings', figmaIcon48(
-		'<path d="M38.3755 13.6854C38.9942 14.0372 39.5079 14.5476 39.8638 15.1639C40.2197 15.7802 40.405 16.4802 40.4006 17.1919V30.3033C40.4006 31.7595 39.6032 33.1023 38.3161 33.8098L26.1659 41.4959C25.5636 41.8266 24.8875 42 24.2003 42C23.5131 42 22.837 41.8266 22.2347 41.4959L10.0844 33.8098C9.45473 33.4656 8.92904 32.9586 8.56235 32.3418C8.19566 31.7249 8.00144 31.0209 8 30.3033V17.1901C8 15.7338 8.79741 14.3928 10.0844 13.6854L22.2347 6.52127C22.8548 6.17933 23.5515 6 24.2597 6C24.9679 6 25.6645 6.17933 26.2847 6.52127L38.4349 13.6854H38.3755Z" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
-		'<path d="M18.8003 23.9996C18.8003 25.4318 19.3692 26.8053 20.3819 27.818C21.3947 28.8307 22.7682 29.3997 24.2004 29.3997C25.6326 29.3997 27.0061 28.8307 28.0188 27.818C29.0315 26.8053 29.6005 25.4318 29.6005 23.9996C29.6005 22.5674 29.0315 21.1939 28.0188 20.1811C27.0061 19.1684 25.6326 18.5995 24.2004 18.5995C22.7682 18.5995 21.3947 19.1684 20.3819 20.1811C19.3692 21.1939 18.8003 22.5674 18.8003 23.9996Z" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>'
+		'<path d="M37.688 14.2584C38.2723 14.5907 38.7575 15.0727 39.0936 15.6548C39.4298 16.2368 39.6047 16.8979 39.6005 17.5701V29.9531C39.6005 31.3284 38.8474 32.5967 37.6319 33.2648L26.1567 40.5239C25.5878 40.8362 24.9493 41 24.3003 41C23.6513 41 23.0127 40.8362 22.4438 40.5239L10.9686 33.2648C10.3739 32.9398 9.87743 32.4609 9.53111 31.8784C9.18479 31.2958 9.00136 30.6308 9 29.9531V17.5684C9 16.1931 9.75311 14.9265 10.9686 14.2584L22.4438 7.49231C23.0296 7.16937 23.6875 7 24.3564 7C25.0252 7 25.6832 7.16937 26.2689 7.49231L37.7441 14.2584H37.688Z" stroke="black" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"/>' +
+		'<path d="M19.2 23.9996C19.2 25.3522 19.7373 26.6494 20.6937 27.6059C21.6502 28.5623 22.9474 29.0997 24.3 29.0997C25.6527 29.0997 26.9499 28.5623 27.9064 27.6059C28.8628 26.6494 29.4001 25.3522 29.4001 23.9996C29.4001 22.6469 28.8628 21.3497 27.9064 20.3933C26.9499 19.4368 25.6527 18.8995 24.3 18.8995C22.9474 18.8995 21.6502 19.4368 20.6937 20.3933C19.7373 21.3497 19.2 22.6469 19.2 23.9996Z" stroke="black" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"/>'
 	))
 
 	// 11 — Duplicate with connections (copy plus — iconstack.io)

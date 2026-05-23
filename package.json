@@ -6,7 +6,10 @@
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
+    "dev:styles": "node scripts/dev-styles.mjs",
+    "pull:styles-from-vault": "node scripts/pull-styles-from-vault.mjs",
     "build": "node esbuild.config.mjs production",
+    "audit:theme": "node scripts/audit-theme-vars.mjs",
     "lint:obsidian": "eslint .",
     "test:gemini-video-text": "node scripts/verify-gemini-video-text.mjs"
   },

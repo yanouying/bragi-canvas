@@ -84,6 +84,34 @@ npm run dev
 npm run build
 ```
 
+### CSS hot reload (UI tuning)
+
+For UI work you can iterate on styles without rebuilding `main.js` on every save:
+
+1. Point the dev script at your vault plugin folder (once):
+
+```bash
+echo "/path/to/vault/.obsidian/plugins/bragi-canvas" > .dev-vault-plugin
+```
+
+2. Reload Bragi Canvas once in Obsidian, then run:
+
+```bash
+npm run dev:styles
+```
+
+3. Edit `src/styles.css` in this repo. Each save syncs to the vault and Obsidian hot-reloads the CSS.
+
+You can also edit the vault's `styles.css` directly; hot reload watches that file too.
+
+When the look is right, copy back into the repo with:
+
+```bash
+npm run pull:styles-from-vault
+```
+
+Hot reload is enabled only when `.css-hot-reload` exists in the vault plugin folder (`dev:styles` creates it). Remove that file before release builds.
+
 Release tags must be plain semantic versions such as `1.12.4`. Do not prefix tags with `v`.
 
 ## Release checklist

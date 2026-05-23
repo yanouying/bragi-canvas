@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Obsidian Canvas internals and provider payloads are runtime-shaped data that this plugin narrows at use sites. */
 import type { App } from 'obsidian'
 import type { Canvas, CanvasNode } from './types/canvas-internal'
+import { clearIncomingRefAttachments, isGeneratingPlaceholderNode } from './generating-node'
 import { getUpstreamInputs } from './edge-parser'
 
 const STRIP_CLASS = 'bragi-audio-ref-strip'
@@ -55,6 +56,10 @@ async function getAudioDuration(app: App, filePath: string): Promise<number> {
 
 export function updateAudioRefStrip(canvas: Canvas, node: CanvasNode, app: App): void {
 	if (isDragging) return
+	if (isGeneratingPlaceholderNode(node)) {
+		clearIncomingRefAttachments(node)
+		return
+	}
 
 	const nodeData = node.getData() as unknown
 	if (nodeData.type !== 'text' && !(nodeData.type === 'file' && /\.md$/i.test(nodeData.file || ''))) {
