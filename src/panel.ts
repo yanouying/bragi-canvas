@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Obsidian Canvas internals and provider payloads are runtime-shaped data that this plugin narrows at use sites. */
 import { Notice, App } from 'obsidian'
-import type { ModelConfig, GenerationType, Mode, VoiceSourceMode } from './models/types'
+import type { ModelConfig, GenerationType, Mode, ModelParam, VoiceSourceMode } from './models/types'
 import { getEnabledModels, getActiveProvider } from './models/index'
 import { getTextInputCapability, textInputKindSupported } from './models/text-input-capabilities'
 import { getConfiguredProviderIds } from './providers/registry'
@@ -67,6 +67,66 @@ function voiceDisplayLabel(
 	const value = String(params.voice ?? fallback ?? '')
 	const savedLabel = typeof params.voiceLabel === 'string' ? params.voiceLabel : ''
 	return savedLabel || options?.find(o => o.value === value)?.label || value || 'Choose'
+}
+
+function rangeParamValueLabel(param: ModelParam, value: string | number): string {
+	return `${value}${param.unit || ''}`
+}
+
+function renderRangeParamDropdown(
+	paramsEl: HTMLElement,
+	param: ModelParam,
+	paramValues: Record<string, string | number>,
+): void {
+	const details = createEl('details')
+	details.className = 'bragi-bar-range-menu'
+
+	const summary = createEl('summary')
+	summary.className = 'bragi-bar-range-btn'
+	summary.title = param.label
+
+	const popover = createDiv()
+	popover.className = 'bragi-bar-range-popover'
+
+	const sliderRow = createDiv()
+	sliderRow.className = 'bragi-bar-range-row'
+
+	const range = createEl('input')
+	range.type = 'range'
+	range.min = String(param.min ?? 0)
+	range.max = String(param.max ?? 100)
+	range.step = String(param.step ?? 1)
+	range.value = String(paramValues[param.id] ?? param.default)
+	range.title = param.label
+
+	const valueLabel = createSpan()
+	valueLabel.className = 'bragi-bar-range-value'
+
+	const updateLabel = () => {
+		const value = rangeParamValueLabel(param, range.value)
+		summary.textContent = `${param.label} (${value})`
+		valueLabel.textContent = value
+	}
+
+	range.addEventListener('input', () => {
+		paramValues[param.id] = parseFloat(range.value)
+		updateLabel()
+	})
+
+	details.addEventListener('toggle', () => {
+		if (!details.open) return
+		paramsEl.querySelectorAll('details.bragi-bar-range-menu[open]').forEach((el) => {
+			if (el !== details) (el as HTMLDetailsElement).open = false
+		})
+	})
+
+	updateLabel()
+	sliderRow.appendChild(range)
+	sliderRow.appendChild(valueLabel)
+	popover.appendChild(sliderRow)
+	details.appendChild(summary)
+	details.appendChild(popover)
+	paramsEl.appendChild(details)
 }
 
 function resolveProvider(
@@ -675,29 +735,22 @@ export function showGenerateBar(
 				paramsEl.appendChild(select)
 				autoSizeSelect(select)
 			} else if (param.type === 'range') {
-				const wrapper = createDiv()
-				wrapper.className = 'bragi-bar-range'
-
-				const range = createEl('input')
-				range.type = 'range'
-				range.min = String(param.min ?? 0)
-				range.max = String(param.max ?? 100)
-				range.step = String(param.step ?? 1)
-				range.value = String(paramValues[param.id] ?? param.default)
-				range.title = param.label
-
-				const valueLabel = createSpan()
-				valueLabel.className = 'bragi-bar-range-value'
-				valueLabel.textContent = `${range.value}${param.unit || ''}`
-
-				range.addEventListener('input', () => {
-					paramValues[param.id] = parseInt(range.value)
-					valueLabel.textContent = `${range.value}${param.unit || ''}`
+				renderRangeParamDropdown(paramsEl, param, paramValues)
+			} else if (param.type === 'number') {
+				const input = createEl('input')
+				input.type = 'number'
+				input.className = 'bragi-bar-number'
+				input.title = param.label
+				if (param.min !== undefined) input.min = String(param.min)
+				if (param.max !== undefined) input.max = String(param.max)
+				if (param.step !== undefined) input.step = String(param.step)
+				input.value = String(paramValues[param.id] ?? param.default)
+				input.addEventListener('change', () => {
+					const parsed = input.value.trim() ? parseFloat(input.value) : ''
+					paramValues[param.id] = typeof parsed === 'number' && Number.isFinite(parsed) ? parsed : ''
+					updateRunState()
 				})
-
-				wrapper.appendChild(range)
-				wrapper.appendChild(valueLabel)
-				paramsEl.appendChild(wrapper)
+				paramsEl.appendChild(input)
 			}
 		}
 	}
@@ -1222,25 +1275,21 @@ export function showBatchGenerateBar(
 				paramsEl.appendChild(select)
 				autoSizeSelect(select)
 			} else if (param.type === 'range') {
-				const wrapper = createDiv()
-				wrapper.className = 'bragi-bar-range'
-				const range = createEl('input')
-				range.type = 'range'
-				range.min = String(param.min ?? 0)
-				range.max = String(param.max ?? 100)
-				range.step = String(param.step ?? 1)
-				range.value = String(paramValues[param.id] ?? param.default)
-				range.title = param.label
-				const valueLabel = createSpan()
-				valueLabel.className = 'bragi-bar-range-value'
-				valueLabel.textContent = `${range.value}${param.unit || ''}`
-				range.addEventListener('input', () => {
-					paramValues[param.id] = parseInt(range.value)
-					valueLabel.textContent = `${range.value}${param.unit || ''}`
+				renderRangeParamDropdown(paramsEl, param, paramValues)
+			} else if (param.type === 'number') {
+				const input = createEl('input')
+				input.type = 'number'
+				input.className = 'bragi-bar-number'
+				input.title = param.label
+				if (param.min !== undefined) input.min = String(param.min)
+				if (param.max !== undefined) input.max = String(param.max)
+				if (param.step !== undefined) input.step = String(param.step)
+				input.value = String(paramValues[param.id] ?? param.default)
+				input.addEventListener('change', () => {
+					const parsed = input.value.trim() ? parseFloat(input.value) : ''
+					paramValues[param.id] = typeof parsed === 'number' && Number.isFinite(parsed) ? parsed : ''
 				})
-				wrapper.appendChild(range)
-				wrapper.appendChild(valueLabel)
-				paramsEl.appendChild(wrapper)
+				paramsEl.appendChild(input)
 			}
 		}
 	}

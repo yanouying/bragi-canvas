@@ -977,6 +977,7 @@ interface CustomVoiceRecord {
 	voiceId: string
 	name?: string
 	previewUrl?: string
+	requiresVerification?: boolean
 	sourceHash?: string
 	sourcePath?: string
 	promptHash?: string
@@ -1062,6 +1063,10 @@ function modelIdForVoiceMode(model: PanelResult['model'], defaultModelId: string
 	return model.voiceConfig?.modelIds?.[voiceMode] || defaultModelId
 }
 
+function voiceCloneRegionForProvider(activeProvider: string): string {
+	return activeProvider === 'dashscope' ? 'cn-beijing' : 'global'
+}
+
 function reusableVoiceRecord(
 	node: CanvasNode,
 	activeProvider: string,
@@ -1106,8 +1111,8 @@ async function applyUpstreamVoiceReference(
 	if (audioPaths.length === 0) {
 		throw new Error('Voice reference needs an upstream audio file.')
 	}
-	if (activeProvider !== 'dashscope' || !providerSupportsVoiceClone(provider)) {
-		throw new Error('Voice reference is currently available with DashScope TTS models.')
+	if (!providerSupportsVoiceClone(provider)) {
+		throw new Error(`Voice reference is not available with ${activeProvider}.`)
 	}
 
 	if (voiceRefAudioIndex < 0 || voiceRefAudioIndex >= audioPaths.length) {
@@ -1120,7 +1125,7 @@ async function applyUpstreamVoiceReference(
 
 	const binary = await app.vault.adapter.readBinary(sourcePath)
 	const sourceHash = await sha256Hex(binary)
-	const region = 'cn-beijing'
+	const region = voiceCloneRegionForProvider(activeProvider)
 	const existing = reusableVoiceRecord(audioNode, activeProvider, region, modelId, sourceHash)
 
 	if (existing) {
@@ -1131,10 +1136,17 @@ async function applyUpstreamVoiceReference(
 
 	new Notice('Creating voice reference...')
 	const ext = getFileExtension(sourcePath, 'mp3')
-	const audioUrl = await uploadRef(undefined, binary, `voice.${ext}`, audioMimeType(sourcePath))
+	const mimeType = audioMimeType(sourcePath)
+	const filename = `voice.${ext}`
+	const audioUrl = activeProvider === 'dashscope'
+		? await uploadRef(undefined, binary, filename, mimeType)
+		: undefined
 	const clone = await provider.cloneVoice({
 		modelId,
 		audioUrl,
+		audioBytes: binary,
+		filename,
+		mimeType,
 		sourceHash,
 		sourcePath,
 	})
@@ -1149,6 +1161,7 @@ async function applyUpstreamVoiceReference(
 		voiceId: clone.voiceId,
 		name: clone.name,
 		previewUrl: clone.previewUrl,
+		requiresVerification: clone.requiresVerification,
 		createdAt: Date.now(),
 	}
 	upsertCustomVoiceRecord(audioNode, record)

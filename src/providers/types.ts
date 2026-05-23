@@ -45,7 +45,10 @@ export interface ListVoicesOptions {
 
 export interface VoiceCloneOptions {
 	modelId: string
-	audioUrl: string
+	audioUrl?: string
+	audioBytes?: ArrayBuffer
+	filename?: string
+	mimeType?: string
 	sourceHash: string
 	sourcePath: string
 	voiceNamePrefix?: string
@@ -55,6 +58,7 @@ export interface VoiceCloneResult {
 	voiceId: string
 	name?: string
 	previewUrl?: string
+	requiresVerification?: boolean
 }
 
 export interface VoiceDesignOptions {

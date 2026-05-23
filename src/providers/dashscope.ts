@@ -345,6 +345,7 @@ export class DashScopeAudioProvider implements AudioProvider {
 
 	async cloneVoice(options: VoiceCloneOptions): Promise<VoiceCloneResult> {
 		const modelId = options.modelId
+		if (!options.audioUrl) throw new Error('DashScope voice clone needs an uploaded audio URL.')
 		const qwen = isQwenModel(modelId)
 		const input: UnknownRecord = qwen
 			? {
