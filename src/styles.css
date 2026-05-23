@@ -814,6 +814,16 @@
 	gap: 6px;
 }
 
+.bragi-bar-upstream-hint {
+	font-size: 11px;
+	color: var(--text-muted);
+	white-space: nowrap;
+}
+
+.bragi-bar-upstream-hint-hidden {
+	display: none;
+}
+
 /* Right group: params + batch + run */
 .bragi-bar-right {
 	display: flex;
