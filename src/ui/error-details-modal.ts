@@ -1,4 +1,4 @@
-import { Modal, Notice, type App } from 'obsidian'
+import { Modal, type App } from 'obsidian'
 import type { CanvasNode } from '../types/canvas-internal'
 
 export function getNodeErrorDetails(node: CanvasNode): string {
@@ -15,18 +15,18 @@ export class ErrorDetailsModal extends Modal {
 	onOpen(): void {
 		const { contentEl, titleEl, modalEl } = this
 		modalEl.classList.add('bragi-modal')
-		titleEl.setText('Error Details')
+		titleEl.setText('Error details')
 
-		const body = contentEl.createEl('pre', { cls: 'bragi-error-details-body' })
-		body.textContent = this.errorMessage
+		const body = contentEl.createEl('textarea', { cls: 'bragi-error-details-body' })
+		body.value = this.errorMessage
+		body.readOnly = true
 
 		const row = contentEl.createDiv({ cls: 'modal-button-container' })
-		const copyBtn = row.createEl('button', { text: 'Copy', cls: 'mod-cta' })
+		const selectBtn = row.createEl('button', { text: 'Select all', cls: 'mod-cta' })
 		const closeBtn = row.createEl('button', { text: 'Close' })
-		copyBtn.addEventListener('click', () => {
-			void navigator.clipboard.writeText(this.errorMessage).then(() => {
-				new Notice('Error details copied')
-			})
+		selectBtn.addEventListener('click', () => {
+			body.focus()
+			body.select()
 		})
 		closeBtn.addEventListener('click', () => this.close())
 	}

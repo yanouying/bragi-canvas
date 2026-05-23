@@ -5,6 +5,7 @@ const mainSource = readFileSync('src/main.ts', 'utf8')
 const textGenSource = readFileSync('src/providers/text-gen.ts', 'utf8')
 const tokenRouterSource = readFileSync('src/providers/tokenrouter.ts', 'utf8')
 const modelSource = readFileSync('src/models/text-gen.ts', 'utf8')
+const capabilitySource = readFileSync('src/models/text-input-capabilities.ts', 'utf8')
 const mcpToolRegistrySource = readFileSync('src/mcp-tool-registry.ts', 'utf8')
 
 assert.match(
@@ -21,8 +22,14 @@ assert.match(
 
 assert.match(
 	mainSource,
-	/Video, audio, and PDF references for text generation are currently supported only with Google Gemini or TokenRouter\./,
+	/validateTextInputs\(model\.id, activeProvider, \{[\s\S]*videos: uniqueVideos\.length,[\s\S]*audios: uniqueAudios\.length,[\s\S]*\}, apiModelId\)/,
 	'text generation must fail clearly when upstream file refs are used with unsupported providers',
+)
+
+assert.match(
+	capabilitySource,
+	/does not support upstream \$\{kindLabel\(kind\)\} for text generation\./,
+	'text input validation must include a clear unsupported-reference error',
 )
 
 assert.match(

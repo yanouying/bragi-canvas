@@ -8,6 +8,7 @@ const VIDEO_EXT = /\.(mp4|mov|webm|mkv|m4v)$/i
 const AUDIO_EXT = /\.(mp3|wav|flac|m4a|ogg|aac|opus)$/i
 
 const MEDIA_NODE_CLASS = 'bragi-media-node'
+const MEDIA_CONTAINER_CLASS = 'bragi-media-container'
 const META_LABEL_CLASS = 'bragi-media-meta-label'
 
 type MediaKind = 'image' | 'video' | 'audio'
@@ -111,7 +112,7 @@ function probeImageDimensions(app: App, filePath: string): Promise<string> {
 function probeVideoDimensions(app: App, filePath: string): Promise<string> {
 	const url = app.vault.adapter.getResourcePath(filePath)
 	return new Promise((resolve) => {
-		const video = document.createElement('video')
+		const video = createEl('video')
 		video.preload = 'metadata'
 		let settled = false
 		const finish = () => {
@@ -209,7 +210,7 @@ function ensureMetaLabel(node: MediaNodeInternals): HTMLElement | null {
 
 	if (node.metaLabelEl?.isConnected) return node.metaLabelEl
 
-	const existing = nodeEl.querySelector(`.${META_LABEL_CLASS}`) as HTMLElement | null
+	const existing = nodeEl.querySelector<HTMLElement>(`.${META_LABEL_CLASS}`)
 	if (existing) {
 		node.metaLabelEl = existing
 		return existing
@@ -224,7 +225,7 @@ function ensureMetaLabel(node: MediaNodeInternals): HTMLElement | null {
 
 function getLabelEl(node: MediaNodeInternals): HTMLElement | null {
 	if (node.labelEl?.isConnected) return node.labelEl
-	return node.nodeEl?.querySelector('.canvas-node-label:not(.bragi-media-meta-label)') as HTMLElement | null
+	return node.nodeEl?.querySelector<HTMLElement>('.canvas-node-label:not(.bragi-media-meta-label)') ?? null
 }
 
 async function syncMediaNode(node: CanvasNode): Promise<void> {
@@ -236,10 +237,12 @@ async function syncMediaNode(node: CanvasNode): Promise<void> {
 	const nodeEl = node.nodeEl
 	if (!kind || !nodeEl) {
 		nodeEl?.classList.remove(MEDIA_NODE_CLASS)
+		node.containerEl?.classList.remove(MEDIA_CONTAINER_CLASS)
 		return
 	}
 
 	nodeEl.classList.add(MEDIA_NODE_CLASS)
+	node.containerEl?.classList.add(MEDIA_CONTAINER_CLASS)
 
 	const extLabel = formatExtensionLabel(filePath)
 	const labelEl = getLabelEl(node as MediaNodeInternals)
@@ -341,5 +344,8 @@ export function stopMediaNodeHover(): void {
 	activeDocument.querySelectorAll(`.${META_LABEL_CLASS}`).forEach((el) => el.remove())
 	activeDocument.querySelectorAll(`.${MEDIA_NODE_CLASS}`).forEach((el) => {
 		el.classList.remove(MEDIA_NODE_CLASS)
+	})
+	activeDocument.querySelectorAll(`.${MEDIA_CONTAINER_CLASS}`).forEach((el) => {
+		el.classList.remove(MEDIA_CONTAINER_CLASS)
 	})
 }

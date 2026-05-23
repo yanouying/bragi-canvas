@@ -5,25 +5,6 @@ import path from "path";
 
 const prod = process.argv[2] === "production";
 
-/** Load a few third-party assets as plain text so the plugin can inject them at runtime. */
-const textAssetsPlugin = {
-	name: "text-assets",
-	setup(build) {
-		build.onResolve({ filter: /^pannellum-raw$/ }, () => ({
-			path: path.resolve("./node_modules/pannellum/build/pannellum.js"),
-			namespace: "text-asset",
-		}));
-		build.onResolve({ filter: /^pannellum-raw-css$/ }, () => ({
-			path: path.resolve("./node_modules/pannellum/build/pannellum.css"),
-			namespace: "text-asset",
-		}));
-		build.onLoad({ filter: /.*/, namespace: "text-asset" }, async (args) => ({
-			contents: await fs.readFile(args.path, "utf8"),
-			loader: "text",
-		}));
-	},
-};
-
 const context = await esbuild.context({
 	entryPoints: ["src/main.ts"],
 	bundle: true,
@@ -97,7 +78,7 @@ const context = await esbuild.context({
 	loader: {
 		".css": "text",
 	},
-	plugins: [textAssetsPlugin],
+	plugins: [],
 });
 
 if (prod) {

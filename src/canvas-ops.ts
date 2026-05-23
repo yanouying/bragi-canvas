@@ -351,7 +351,8 @@ export function rehydrateFailedPlaceholders(canvas: Canvas): void {
 			styleFailedPlaceholder(node, title, errorMsg)
 			continue
 		}
-		const text = String(node.text || d.text || '').trim()
+		const rawText = typeof node.text === 'string' ? node.text : typeof d.text === 'string' ? d.text : ''
+		const text = rawText.trim()
 		if (text.startsWith('Generation failed:')) {
 			styleFailedPlaceholder(node, 'Generation Failed', text.slice('Generation failed:'.length).trim())
 		} else if (text.startsWith('Generation interrupted:')) {

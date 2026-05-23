@@ -120,7 +120,7 @@
 .is-themed .canvas-node-container,
 .canvas-node.is-selected.is-dragging .canvas-node-container,
 .canvas-node.is-focused.is-dragging .canvas-node-container {
-	box-shadow: none !important;
+	box-shadow: none;
 	border: none;
 }
 
@@ -231,7 +231,7 @@
 .canvas-node.bragi-generating .bragi-text-ref-strip,
 .canvas-node.bragi-generating .bragi-ref-strip,
 .canvas-node.bragi-generating .bragi-audio-ref-strip {
-	display: none !important;
+	display: none;
 }
 
 @keyframes bragi-shimmer-pass {
@@ -290,7 +290,7 @@
 	user-select: none;
 	border: none;
 	outline: none;
-	box-shadow: none !important;
+	box-shadow: none;
 	filter: none;
 	background: transparent;
 }
@@ -345,7 +345,7 @@
 }
 
 .canvas-node.bragi-generating .bragi-dmx-dot.bragi-dmx-inactive {
-	opacity: 0 !important;
+	opacity: 0;
 	visibility: hidden;
 	pointer-events: none;
 }
@@ -376,7 +376,7 @@
 	pointer-events: none;
 	border: none;
 	outline: none;
-	box-shadow: none !important;
+	box-shadow: none;
 	filter: none;
 	text-shadow: none;
 	opacity: 1;
@@ -435,7 +435,7 @@
 .canvas-node.bragi-generation-failed .bragi-text-ref-strip,
 .canvas-node.bragi-generation-failed .bragi-ref-strip,
 .canvas-node.bragi-generation-failed .bragi-audio-ref-strip {
-	display: none !important;
+	display: none;
 }
 
 .canvas-node.bragi-generation-failed .bragi-failed-overlay {
@@ -485,8 +485,7 @@
 
 
 /* Image / video: square corners, fill edge-to-edge (no flex gap / white strip) */
-.canvas-node-container:has(.canvas-node-content.image-embed),
-.canvas-node-container:has(.canvas-node-content.media-embed.video-embed) {
+.canvas-node-container.bragi-media-container {
 	background-color: transparent;
 	border-radius: 0;
 }
@@ -550,44 +549,44 @@
  */
 
 .workspace-leaf-content[data-type='canvas'] .canvas-edges path.canvas-display-path {
-	stroke: var(--bragi-edge-default) !important;
-	stroke-width: 2px !important;
+	stroke: var(--bragi-edge-default);
+	stroke-width: 2px;
 	filter: none;
-	transition: stroke 100ms ease-out !important;
+	transition: stroke 100ms ease-out;
 }
 
 .workspace-leaf-content[data-type='canvas'] svg.canvas-edges .canvas-path-end {
-	stroke: var(--bragi-edge-default) !important;
-	fill: var(--bragi-edge-default) !important;
+	stroke: var(--bragi-edge-default);
+	fill: var(--bragi-edge-default);
 }
 
 /* User-set edge color */
 .workspace-leaf-content[data-type='canvas'] .canvas-edges g[class*='mod-canvas-color-'] path.canvas-display-path {
-	stroke: rgb(var(--canvas-color)) !important;
+	stroke: rgb(var(--canvas-color));
 }
 
 .workspace-leaf-content[data-type='canvas'] .canvas-edges g[class*='mod-canvas-color-'] .canvas-path-end {
-	stroke: rgb(var(--canvas-color)) !important;
-	fill: rgb(var(--canvas-color)) !important;
+	stroke: rgb(var(--canvas-color));
+	fill: rgb(var(--canvas-color));
 }
 
 .workspace-leaf-content[data-type='canvas'] .canvas-edges path.canvas-interaction-path {
-	stroke: transparent !important;
-	stroke-opacity: 0 !important;
-	transition: none !important;
+	stroke: transparent;
+	stroke-opacity: 0;
+	transition: none;
 }
 
 /* Hover — accent for default edges only */
 .workspace-leaf-content[data-type='canvas'] .canvas:not(.is-connecting) .canvas-edges g:not(.is-focused):not(.bragi-edge-connected):not([class*='mod-canvas-color-']):hover path.canvas-display-path,
 .workspace-leaf-content[data-type='canvas'] .bragi-edge-hovered:not(.is-focused):not(.bragi-edge-connected):not([class*='mod-canvas-color-']) path.canvas-display-path {
-	stroke: hsla(var(--color-accent-hsl), 0.55) !important;
-	stroke-width: 2px !important;
+	stroke: hsla(var(--color-accent-hsl), 0.55);
+	stroke-width: 2px;
 }
 
 .workspace-leaf-content[data-type='canvas'] .canvas:not(.is-connecting) .canvas-edges g:not(.is-focused):not(.bragi-edge-connected):hover path.canvas-interaction-path,
 .workspace-leaf-content[data-type='canvas'] .bragi-edge-hovered:not(.is-focused):not(.bragi-edge-connected) path.canvas-interaction-path {
-	stroke: transparent !important;
-	stroke-opacity: 0 !important;
+	stroke: transparent;
+	stroke-opacity: 0;
 }
 
 /* Selected / node-connected — accent for default edges only */
@@ -595,29 +594,29 @@
 .workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.is-focused:not([class*='mod-canvas-color-']):hover path.canvas-display-path,
 .workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.bragi-edge-connected:not([class*='mod-canvas-color-']) path.canvas-display-path,
 .workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.bragi-edge-connected:not([class*='mod-canvas-color-']):hover path.canvas-display-path {
-	stroke: var(--color-accent) !important;
-	stroke-width: 2px !important;
+	stroke: var(--color-accent);
+	stroke-width: 2px;
 }
 
 .workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.is-focused:not([class*='mod-canvas-color-']) path.canvas-interaction-path,
 .workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.is-focused:not([class*='mod-canvas-color-']):hover path.canvas-interaction-path,
 .workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.bragi-edge-connected:not([class*='mod-canvas-color-']) path.canvas-interaction-path,
 .workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.bragi-edge-connected:not([class*='mod-canvas-color-']):hover path.canvas-interaction-path {
-	stroke: transparent !important;
-	stroke-opacity: 0 !important;
+	stroke: transparent;
+	stroke-opacity: 0;
 }
 
 .workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.is-focused:not([class*='mod-canvas-color-']) .canvas-path-end,
 .workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.is-focused:not([class*='mod-canvas-color-']):hover .canvas-path-end,
 .workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.bragi-edge-connected:not([class*='mod-canvas-color-']) .canvas-path-end,
 .workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.bragi-edge-connected:not([class*='mod-canvas-color-']):hover .canvas-path-end {
-	stroke: var(--color-accent) !important;
-	fill: var(--color-accent) !important;
+	stroke: var(--color-accent);
+	fill: var(--color-accent);
 }
 
 .workspace-leaf-content[data-type='canvas'] svg.canvas-edges > g.bragi-edge-hovered:not(.is-focused):not(.bragi-edge-connected):not([class*='mod-canvas-color-']) .canvas-path-end {
-	stroke: hsla(var(--color-accent-hsl), 0.55) !important;
-	fill: hsla(var(--color-accent-hsl), 0.55) !important;
+	stroke: hsla(var(--color-accent-hsl), 0.55);
+	fill: hsla(var(--color-accent-hsl), 0.55);
 }
 
 /* ── Bragi toolbar elevation (shared) ─────────────────────────────── */
@@ -2216,6 +2215,9 @@
 }
 
 .bragi-error-details-body {
+	display: block;
+	width: 100%;
+	min-height: 160px;
 	margin: 0;
 	padding: 12px;
 	border-radius: 8px;
@@ -2228,6 +2230,8 @@
 	word-break: break-word;
 	max-height: min(50vh, 360px);
 	overflow: auto;
+	resize: vertical;
+	user-select: text;
 }
 
 .bragi-modal input:focus,

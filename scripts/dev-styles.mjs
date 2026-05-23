@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, readFileSync, watch, writeFileSync } from 'fs'
+import { copyFileSync, existsSync, readFileSync, watch } from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -26,19 +26,14 @@ function syncStyles(vaultDir) {
 	console.log(`[dev:styles] synced ${new Date().toLocaleTimeString()}`)
 }
 
-function enableHotReload(vaultDir) {
-	writeFileSync(path.join(vaultDir, '.css-hot-reload'), '')
-}
-
 const vaultDir = readVaultPluginDir()
 if (!existsSync(vaultDir)) {
 	throw new Error(`Vault plugin directory not found: ${vaultDir}`)
 }
 
-enableHotReload(vaultDir)
 syncStyles(vaultDir)
 watch(srcCss, () => syncStyles(vaultDir))
 
 console.log('[dev:styles] watching src/styles.css')
 console.log(`[dev:styles] vault plugin: ${vaultDir}`)
-console.log('[dev:styles] edit src/styles.css — save to hot-reload in Obsidian (no plugin rebuild)')
+console.log('[dev:styles] edit src/styles.css to copy it into the dev vault plugin folder')

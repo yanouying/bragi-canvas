@@ -1,17 +1,16 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Obsidian Canvas internals and provider payloads are runtime-shaped data that this plugin narrows at use sites. */
 import { Modal, Notice, App, setIcon } from 'obsidian'
 import type { Canvas, CanvasNode } from './types/canvas-internal'
-// @ts-ignore — esbuild text loader
-import pannellumJs from 'pannellum-raw'
+import 'pannellum/build/pannellum.js'
 
-let pannellumLoaded = false
+type PannellumGlobal = {
+	pannellum?: {
+		viewer: (element: HTMLElement, options: Record<string, unknown>) => unknown
+	}
+}
 
 function loadPannellum(): void {
-	if (pannellumLoaded) return
-	pannellumLoaded = true
-	const script = createEl('script')
-	script.textContent = pannellumJs
-	activeDocument.head.appendChild(script)
+	if (!(window as unknown as PannellumGlobal).pannellum) throw new Error('Panorama viewer unavailable')
 }
 
 function generateId(): string {
@@ -23,18 +22,20 @@ export class PanoramaViewerModal extends Modal {
 	private canvas: Canvas
 	private outputDir: string
 	private imagePath: string
+	private rememberAsset?: (path: string) => void
 	private viewer: unknown = null
 	private viewerEl: HTMLElement | null = null
 	private mirrored = false
 	private originalUrl: string | null = null
 	private mirroredUrl: string | null = null
 
-	constructor(app: App, canvas: Canvas, sourceNode: CanvasNode, imagePath: string, outputDir: string) {
+	constructor(app: App, canvas: Canvas, sourceNode: CanvasNode, imagePath: string, outputDir: string, rememberAsset?: (path: string) => void) {
 		super(app)
 		this.canvas = canvas
 		this.sourceNode = sourceNode
 		this.imagePath = imagePath
 		this.outputDir = outputDir
+		this.rememberAsset = rememberAsset
 	}
 
 	async onOpen() {
@@ -123,7 +124,7 @@ export class PanoramaViewerModal extends Modal {
 
 	/** Preserve camera pose across reloads. */
 	private async rebuildViewer(): Promise<void> {
-		const p = (window as unknown).pannellum
+		const p = (window as unknown as PannellumGlobal).pannellum
 		if (!p || !this.viewerEl) return
 
 		let yaw = 0, pitch = 0, hfov = 100
@@ -222,7 +223,7 @@ export class PanoramaViewerModal extends Modal {
 		offscreen.classList.add('bragi-pano-offscreen-shot')
 		activeDocument.body.appendChild(offscreen)
 
-		const p = (window as unknown).pannellum
+		const p = (window as unknown as PannellumGlobal).pannellum
 		const shotViewer: unknown = p.viewer(offscreen, {
 			type: 'equirectangular',
 			panorama: url,
@@ -271,6 +272,7 @@ export class PanoramaViewerModal extends Modal {
 		const filePath = `${this.outputDir}/${fileName}`
 		await adapter.writeBinary(filePath, buf.buffer)
 
+		this.rememberAsset?.(filePath)
 		this.addNodeRightOf(filePath)
 		new Notice('Captured')
 	}
@@ -307,14 +309,14 @@ export class PanoramaViewerModal extends Modal {
 }
 
 /** Entry point called from toolbar. */
-export function openPanoramaViewer(app: App, canvas: Canvas, node: CanvasNode, outputDir: string): void {
+export function openPanoramaViewer(app: App, canvas: Canvas, node: CanvasNode, outputDir: string, rememberAsset?: (path: string) => void): void {
 	const data = node.getData() as unknown
 	const filePath = data.file
 	if (!filePath) {
 		new Notice('This node has no image file')
 		return
 	}
-	new PanoramaViewerModal(app, canvas, node, filePath, outputDir).open()
+	new PanoramaViewerModal(app, canvas, node, filePath, outputDir, rememberAsset).open()
 }
 
 /* eslint-enable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Resume strict linting after the runtime-shaped data boundary. */
