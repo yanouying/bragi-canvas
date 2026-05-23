@@ -4,6 +4,7 @@ import { requestUrl } from 'obsidian'
 import type { GenerateImageResult, GenerateVideoResult, ImageProvider, VideoProvider } from './types'
 import type { TextGenProvider, TextGenResult } from './text-gen'
 import { uploadRef } from './upload'
+import { resolveOpenAIImageSize } from './openai-image-size'
 
 const DEFAULT_BASE_URL = 'https://api.tokenrouter.com/v1'
 const IMAGE_GENERATION_MODELS = new Set([
@@ -231,15 +232,6 @@ function isSeedanceModel(modelId: string): boolean {
 	return modelId.includes('seedance')
 }
 
-function imageSizeFromAspectRatio(aspectRatio: string): string {
-	const parts = aspectRatio.split(':').map(Number)
-	if (parts.length !== 2 || !parts[0] || !parts[1]) return '1024x1024'
-	const ratio = parts[0] / parts[1]
-	if (ratio > 1.15) return '1536x1024'
-	if (ratio < 0.87) return '1024x1536'
-	return '1024x1024'
-}
-
 function appendMultipartField(parts: Uint8Array[], boundary: string, name: string, value: string): void {
 	const enc = new TextEncoder()
 	parts.push(enc.encode(`--${boundary}\r\n`))
@@ -387,8 +379,7 @@ export class TokenRouterImageProvider implements ImageProvider {
 	private async generateViaImagesApi(modelId: string, prompt: string, params: Record<string, unknown>, refImages: string[]): Promise<string[]> {
 		if (refImages.length > 0) return this.editWithRefs(modelId, prompt, params, refImages)
 
-		const imageSize = stringParam(params.imageSize, 'auto')
-		const size = imageSize === 'auto' ? 'auto' : imageSizeFromAspectRatio(stringParam(params.aspectRatio, '1:1'))
+		const size = resolveOpenAIImageSize(params)
 		const quality = stringParam(params.quality, 'auto')
 
 		const resp = await requestUrl({
@@ -411,7 +402,7 @@ export class TokenRouterImageProvider implements ImageProvider {
 		const parts: Uint8Array[] = []
 		appendMultipartField(parts, boundary, 'model', modelId)
 		appendMultipartField(parts, boundary, 'prompt', prompt)
-		appendMultipartField(parts, boundary, 'size', imageSizeFromAspectRatio(stringParam(params.aspectRatio, '1:1')))
+		appendMultipartField(parts, boundary, 'size', resolveOpenAIImageSize(params))
 		appendMultipartField(parts, boundary, 'quality', stringParam(params.quality, 'auto'))
 		appendMultipartField(parts, boundary, 'n', '1')
 

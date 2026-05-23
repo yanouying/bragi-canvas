@@ -2,18 +2,8 @@
 import type { ImageProvider, GenerateImageResult } from './types'
 import type { App } from 'obsidian'
 import { requestUrl } from 'obsidian'
-
-// GPT Image 2 only accepts a fixed set of sizes: 1024x1024, 1024x1536, 1536x1024, auto.
-// Sending anything else gets silently coerced by the API (we used to compute arbitrary
-// sizes like 2736x1536 which came back as portrait 1024x1536 regardless of aspect ratio).
-function resolveSize(aspectRatio: string): string {
-	const parts = aspectRatio.split(':').map(Number)
-	if (parts.length !== 2 || !parts[0] || !parts[1]) return '1024x1024'
-	const ratio = parts[0] / parts[1]
-	if (ratio > 1.15) return '1536x1024'   // landscape
-	if (ratio < 0.87) return '1024x1536'   // portrait
-	return '1024x1024'                     // square
-}
+import { resolveOpenAIImageSize } from './openai-image-size'
+import { stringParam } from './params'
 
 export class OpenAIProvider implements ImageProvider {
 	name = 'GPT Image'
@@ -30,18 +20,10 @@ export class OpenAIProvider implements ImageProvider {
 	}
 
 	async generateImage(prompt: string, params?: Record<string, unknown>): Promise<GenerateImageResult> {
-		const modelId = params?.modelId || 'gpt-image-2'
-		const refImages: string[] = params?.refImages || []
-		const quality = params?.quality || 'auto'
-
-		let size: string
-		if (params?.size) {
-			size = params.size
-		} else if (params?.imageSize === 'auto') {
-			size = 'auto'
-		} else {
-			size = resolveSize(params?.aspectRatio || '1:1')
-		}
+		const modelId = stringParam(params?.modelId, 'gpt-image-2')
+		const refImages = Array.isArray(params?.refImages) ? params.refImages.filter((r): r is string => typeof r === 'string') : []
+		const quality = stringParam(params?.quality, 'auto')
+		const size = resolveOpenAIImageSize(params)
 
 		let b64: string
 		if (refImages.length > 0) {
