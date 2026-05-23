@@ -34,6 +34,7 @@ export class TaskQueue {
 	private inFlight = new Set<string>()
 
 	onChange: (() => void) | null = null
+	onComplete: ((filePath: string, canvasPath: string) => void) | null = null
 
 	start(): void {
 		if (this.interval) return
@@ -82,6 +83,7 @@ export class TaskQueue {
 				if (!this.tasks.some(t => t.snapshot.taskId === id)) return
 
 				if (result.done && result.filePath) {
+					this.onComplete?.(result.filePath, task.snapshot.canvasPath)
 					replacePlaceholderWithFile(task.canvas, task.placeholder, result.filePath, task.sourceNode)
 					new Notice(`Video ready (${task.snapshot.modelName})`)
 					completedIds.add(id)

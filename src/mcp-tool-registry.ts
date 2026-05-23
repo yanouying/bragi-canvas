@@ -2,7 +2,6 @@
 import { randomUUID } from 'crypto'
 import { z } from 'zod'
 import { Modal, TFile, type App } from 'obsidian'
-import type { ToolCallback } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { AllCanvasNodeData, CanvasEdgeData } from 'obsidian/canvas'
 import type { Canvas, CanvasEdge, CanvasNode, MoveAndResizeOptions } from './types/canvas-internal'
 import type { PanelResult } from './panel'
@@ -22,6 +21,10 @@ export type RunGeneration = (node: CanvasNode, result: PanelResult) => Promise<{
 	expectedOutputType: 'image' | 'video' | 'text' | 'audio'
 }>
 export type ToolSchema = z.ZodRawShape
+export interface McpToolResult {
+	content: Array<{ type: 'text'; text: string }>
+}
+type ToolArgs<Args extends ToolSchema> = z.infer<z.ZodObject<Args>>
 
 type JsonMap = Record<string, unknown>
 type BragiCanvasNodeData = AllCanvasNodeData & { bragiAssetId?: string }
@@ -36,6 +39,8 @@ export interface McpToolContext {
 	getSettings?: () => BragiSettings
 	taskQueue?: TaskQueue
 	getOutputDir?: () => string
+	rememberGeneratedAsset?: (path: string) => void
+	rememberCanvasPath?: (path: string) => void
 }
 
 export interface McpToolDef<Args extends ToolSchema = ToolSchema> {
@@ -43,7 +48,7 @@ export interface McpToolDef<Args extends ToolSchema = ToolSchema> {
 	category: string
 	description: string
 	inputSchema: Args
-	handler: ToolCallback<Args>
+	handler: (args: ToolArgs<Args>) => McpToolResult | Promise<McpToolResult>
 }
 
 function requireCanvas(getCanvas: GetCanvas): Canvas {
@@ -134,7 +139,7 @@ function callRuntimeEdgeRemoval(canvas: Canvas, edgeId: string): boolean {
 	return false
 }
 
-function ok(data: unknown = { status: 'ok' }) {
+function ok(data: unknown = { status: 'ok' }): McpToolResult {
 	return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] }
 }
 
@@ -836,6 +841,7 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 					if (!(await adapter.exists(cur))) await adapter.mkdir(cur)
 				}
 				await adapter.writeBinary(finalPath, binary)
+				ctx.rememberGeneratedAsset?.(finalPath)
 				const id = randomId()
 				const full = canvas.getData()
 				const newNode = { id, type: 'file' as const, file: finalPath, x, y, width, height }
@@ -891,11 +897,18 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 		{
 			category: 'Canvas switching',
 			name: 'list_canvases',
-			description: 'List every .canvas file in the vault.',
+			description: 'List canvas files Bragi has seen in this vault.',
 			inputSchema: {},
 			handler: () => {
-				const files = ctx.app.vault.getFiles().filter(f => f.extension === 'canvas')
-				return ok(files.map(f => ({ path: f.path, basename: f.basename })))
+				const settings = ctx.getSettings?.()
+				const paths = settings?.knownCanvases || []
+				return ok(paths.map(path => {
+					const name = path.split('/').pop() || path
+					return {
+						path,
+						basename: name.endsWith('.canvas') ? name.slice(0, -7) : name,
+					}
+				}))
 			},
 		},
 
@@ -911,6 +924,7 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 				const confirmed = await confirmOpenCanvas(ctx.app, file.basename)
 				if (!confirmed) throw new Error('cancelled by user')
 				await ctx.app.workspace.getLeaf().openFile(file)
+				ctx.rememberCanvasPath?.(file.path)
 				return ok({ path: file.path })
 			},
 		},

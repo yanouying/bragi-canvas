@@ -52,6 +52,7 @@ export async function splitImageNodeIntoTiles(plugin: BragiCanvas, canvas: Canva
 		const filePath = `${outputDir}/${fileName}`
 		const buf = await t.blob.arrayBuffer()
 		await adapter.writeBinary(filePath, buf)
+		plugin.rememberGeneratedAsset(filePath)
 		tileFiles.push(filePath)
 	}
 

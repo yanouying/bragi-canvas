@@ -45,6 +45,12 @@ export interface ModelPref {
 	selectedProvider: string
 }
 
+export interface GeneratedAssetRecord {
+	path: string
+	canvasPath: string
+	createdAt: number
+}
+
 export interface BragiSettings {
 	outputDir: string
 	/** Set to true once the user has been prompted about the legacy ss/ → _bragi/assets/ migration. */
@@ -95,6 +101,11 @@ export interface BragiSettings {
 	lastAudio?: LastSelection
 	lastText?: LastSelection
 
+	// Community-review-safe indexes. These replace whole-vault enumeration for
+	// MCP canvas listing and generated asset cleanup.
+	knownCanvases: string[]
+	generatedAssets: GeneratedAssetRecord[]
+
 	// MCP server
 	mcpEnabled: boolean
 	mcpPort: number
@@ -140,6 +151,8 @@ export const DEFAULT_SETTINGS: BragiSettings = {
 	mcpEnabled: false,
 	mcpPort: 17775,
 	mcpToken: '',
+	knownCanvases: [],
+	generatedAssets: [],
 }
 
 type ImportValidationResult =
@@ -161,6 +174,8 @@ function cloneDefaultSettings(): BragiSettings {
 			text: [],
 			audio: [],
 		},
+		knownCanvases: [],
+		generatedAssets: [],
 	}
 }
 
@@ -192,6 +207,51 @@ function readOptionalPort(source: UnknownRecord, key: string, target: UnknownRec
 		return
 	}
 	target[key] = value
+}
+
+function readOptionalStringArray(source: UnknownRecord, key: string, target: UnknownRecord, errors: string[]): void {
+	if (!(key in source)) return
+	const value = source[key]
+	if (!Array.isArray(value) || value.some(item => typeof item !== 'string')) {
+		errors.push(key)
+		return
+	}
+	target[key] = [...new Set(value)]
+}
+
+function readGeneratedAssets(source: UnknownRecord, errors: string[]): GeneratedAssetRecord[] {
+	if (!('generatedAssets' in source)) return []
+	const value = source.generatedAssets
+	if (!Array.isArray(value)) {
+		errors.push('generatedAssets')
+		return []
+	}
+	const records: GeneratedAssetRecord[] = []
+	for (let i = 0; i < value.length; i++) {
+		const record = value[i]
+		if (!isRecord(record)) {
+			errors.push(`generatedAssets.${i}`)
+			continue
+		}
+		if (typeof record.path !== 'string') {
+			errors.push(`generatedAssets.${i}.path`)
+			continue
+		}
+		if (typeof record.canvasPath !== 'string') {
+			errors.push(`generatedAssets.${i}.canvasPath`)
+			continue
+		}
+		if (typeof record.createdAt !== 'number' || !Number.isFinite(record.createdAt)) {
+			errors.push(`generatedAssets.${i}.createdAt`)
+			continue
+		}
+		records.push({
+			path: record.path,
+			canvasPath: record.canvasPath,
+			createdAt: record.createdAt,
+		})
+	}
+	return records
 }
 
 function readLastSelection(source: UnknownRecord, key: string, errors: string[]): LastSelection | undefined {
@@ -288,6 +348,8 @@ function validateImportedSettings(raw: unknown): ImportValidationResult {
 		'mcpEnabled',
 		'mcpPort',
 		'mcpToken',
+		'knownCanvases',
+		'generatedAssets',
 	]
 	if (!recognizableKeys.some(key => key in raw)) return { ok: false }
 
@@ -301,6 +363,8 @@ function validateImportedSettings(raw: unknown): ImportValidationResult {
 	readOptionalBoolean(raw, 'mcpEnabled', target, errors)
 	readOptionalPort(raw, 'mcpPort', target, errors)
 	readOptionalString(raw, 'mcpToken', target, errors)
+	readOptionalStringArray(raw, 'knownCanvases', target, errors)
+	settings.generatedAssets = readGeneratedAssets(raw, errors)
 
 	if ('providers' in raw) {
 		if (!isRecord(raw.providers)) {
@@ -394,7 +458,7 @@ export class BragiSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Clean up unused files')
-			.setDesc('Delete generated files that aren\'t used by any canvas or note')
+			.setDesc('Delete bragi-generated files that are indexed for the active canvas but no longer used there')
 			.addButton(btn => btn
 				.setButtonText('Clean up')
 				.onClick(() => {
@@ -760,15 +824,16 @@ export class BragiSettingTab extends PluginSettingTab {
 		})
 	}
 
-	/**
-	 * Delete files in _bragi/assets/ that are not referenced by any canvas or note.
-	 * References are collected from:
-	 *   - .canvas files: parsed JSON, check nodes[].file and nodes[].background
-	 *   - .md files: text search (cheap, catches ![[...]] and ![](...))
-	 */
+	/** Delete indexed files in _bragi/assets/ that are no longer referenced by the active canvas. */
 	private async cleanUpUnusedAssets(): Promise<void> {
-		const vault = this.app.vault
-		const adapter = vault.adapter
+		const canvas = this.plugin.getActiveCanvas()
+		const canvasPath = this.plugin.getActiveCanvasPath()
+		if (!canvas || !canvasPath) {
+			new Notice('Open a canvas first')
+			return
+		}
+
+		const adapter = this.app.vault.adapter
 		const assetDir = '_bragi/assets'
 
 		if (!await adapter.exists(assetDir)) {
@@ -776,48 +841,36 @@ export class BragiSettingTab extends PluginSettingTab {
 			return
 		}
 
-		// 1. Collect referenced vault paths
 		const referenced = new Set<string>()
-		const allFiles = vault.getFiles()
-		let mdContent = ''
-		for (const file of allFiles) {
-			if (file.extension === 'canvas') {
-				try {
-					const text = await vault.read(file)
-					const data = JSON.parse(text)
-					for (const n of (data.nodes || [])) {
-						if (n.file) referenced.add(n.file)
-						if (n.background) referenced.add(n.background)
-					}
-				} catch { /* unparseable, skip */ }
-			} else if (file.extension === 'md') {
-				try {
-					mdContent += await vault.read(file) + '\n'
-				} catch {
-					// Ignore unreadable notes during cleanup scanning.
-				}
-			}
+		for (const node of canvas.getData().nodes || []) {
+			if (node.file) referenced.add(node.file)
+			if (node.background) referenced.add(node.background)
 		}
 
-		// 2. List files in _bragi/assets/
 		const listing = await adapter.list(assetDir)
-		const assetFiles = listing.files  // full paths
+		const existingAssetFiles = new Set(listing.files)
+		const indexedForCanvas = this.plugin.settings.generatedAssets
+			.filter(record => record.canvasPath === canvasPath)
+			.filter(record => existingAssetFiles.has(record.path))
 
-		// 3. Collect unreferenced
-		const toDelete: string[] = []
-		for (const p of assetFiles) {
-			if (referenced.has(p)) continue
-			const name = p.split('/').pop() || p
-			if (mdContent.includes(name) || mdContent.includes(p)) continue
-			toDelete.push(p)
+		const indexedExistingPaths = new Set(indexedForCanvas.map(record => record.path))
+		if (indexedExistingPaths.size !== this.plugin.settings.generatedAssets.filter(record => record.canvasPath === canvasPath).length) {
+			this.plugin.settings.generatedAssets = this.plugin.settings.generatedAssets
+				.filter(record => record.canvasPath !== canvasPath || existingAssetFiles.has(record.path))
+			void this.plugin.saveSettings()
 		}
+
+		const toDelete = [...indexedExistingPaths].filter(path => !referenced.has(path))
 
 		if (toDelete.length === 0) {
-			new Notice('Everything is in use — nothing to clean')
+			if (indexedForCanvas.length === 0) {
+				new Notice('No indexed generated files for this canvas yet')
+			} else {
+				new Notice('Everything indexed for this canvas is in use')
+			}
 			return
 		}
 
-		// 4. Show confirmation dialog
 		const sizes = await Promise.all(toDelete.map(async p => {
 			try {
 				const stat = await adapter.stat(p)
@@ -832,7 +885,7 @@ export class BragiSettingTab extends PluginSettingTab {
 		confirmModal.modalEl.classList.add('bragi-modal')
 		confirmModal.titleEl.setText('Clean up unused files')
 		confirmModal.contentEl.createEl('p', {
-			text: `${toDelete.length} file${toDelete.length > 1 ? 's' : ''} (${sizeMB} MB) aren't used by any canvas or note.`,
+			text: `${toDelete.length} indexed file${toDelete.length > 1 ? 's' : ''} (${sizeMB} MB) aren't used by the active canvas.`,
 		})
 
 		const listEl = confirmModal.contentEl.createEl('details')
@@ -863,12 +916,15 @@ export class BragiSettingTab extends PluginSettingTab {
 				let deleted = 0
 				for (const p of toDelete) {
 					try {
-						await vault.adapter.remove(p)
+						await adapter.remove(p)
 						deleted++
 					} catch {
 						// Skip files that disappear or fail to delete.
 					}
 				}
+				this.plugin.settings.generatedAssets = this.plugin.settings.generatedAssets
+					.filter(record => !toDelete.includes(record.path))
+				void this.plugin.saveSettings()
 				new Notice(`Deleted ${deleted} file${deleted === 1 ? '' : 's'} — ${sizeMB} MB freed`)
 			})()
 		})

@@ -1,36 +1,96 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- Obsidian Canvas internals and provider payloads are runtime-shaped data that this plugin narrows at use sites. */
-import { App, Modal, Notice, TFolder } from 'obsidian'
+import { App, Modal, Notice, TFile, TFolder } from 'obsidian'
 import type BragiCanvas from './main'
 
 const NEW_ASSETS_DIR = '_bragi/assets'
 const BACKUP_DIR_BASE = '_bragi/backup'
 
-/** Find legacy asset folders: any directory whose name matches settings.outputDir. */
-function findLegacyAssetFolders(app: App, legacyName: string): TFolder[] {
+type FileView = { file?: { path?: string; basename?: string } }
+
+function parentDir(path: string): string {
+	const index = path.lastIndexOf('/')
+	return index >= 0 ? path.slice(0, index) : ''
+}
+
+function basename(path: string): string {
+	const name = path.split('/').pop() || path
+	return name.endsWith('.canvas') ? name.slice(0, -7) : name
+}
+
+function activeCanvasPath(app: App): string | null {
+	const view = app.workspace.getLeaf(false)?.view as unknown as FileView | undefined
+	const path = view?.file?.path
+	return typeof path === 'string' && path.endsWith('.canvas') ? path : null
+}
+
+/** Find legacy asset folders near the active canvas without enumerating the vault. */
+function findLegacyAssetFolders(app: App, canvasPath: string, legacyName: string): TFolder[] {
+	const candidates = new Set<string>()
+	const dir = parentDir(canvasPath)
+	if (dir) candidates.add(`${dir}/${legacyName}`)
+	else candidates.add(legacyName)
+	candidates.add(legacyName)
+
 	const result: TFolder[] = []
-	const all = app.vault.getAllLoadedFiles()
-	for (const f of all) {
-		if (f instanceof TFolder && f.name === legacyName && f.path !== NEW_ASSETS_DIR) {
-			result.push(f)
-		}
+	for (const path of candidates) {
+		if (path === NEW_ASSETS_DIR) continue
+		const folder = app.vault.getAbstractFileByPath(path)
+		if (folder instanceof TFolder) result.push(folder)
+	}
+	return result
+}
+
+function collectCanvasReferencedPaths(canvasText: string): Set<string> {
+	const referenced = new Set<string>()
+	const data = JSON.parse(canvasText)
+	for (const node of (data.nodes || [])) {
+		if (typeof node.file === 'string') referenced.add(node.file)
+		if (typeof node.background === 'string') referenced.add(node.background)
+	}
+	return referenced
+}
+
+function isInFolder(path: string, folder: TFolder): boolean {
+	return path.startsWith(`${folder.path}/`)
+}
+
+function activeCanvasLegacyPaths(app: App, canvasText: string, folders: TFolder[]): string[] {
+	const referenced = collectCanvasReferencedPaths(canvasText)
+	const seen = new Set<string>()
+	const result: string[] = []
+	for (const path of referenced) {
+		if (path.startsWith(`${NEW_ASSETS_DIR}/`)) continue
+		if (!folders.some(folder => isInFolder(path, folder))) continue
+		if (!(app.vault.getAbstractFileByPath(path) instanceof TFile)) continue
+		if (seen.has(path)) continue
+		seen.add(path)
+		result.push(path)
 	}
 	return result
 }
 
 export async function checkMigration(plugin: BragiCanvas): Promise<void> {
 	if (plugin.settings.migrationPrompted) return
+	const canvasPath = activeCanvasPath(plugin.app)
+	if (!canvasPath) return
 	const legacyName = plugin.settings.outputDir || 'assets'
-	const folders = findLegacyAssetFolders(plugin.app, legacyName)
-	if (folders.length === 0) {
-		plugin.settings.migrationPrompted = true
-		await plugin.saveSettings()
-		return
-	}
-	new AssetsMigrationModal(plugin, folders).open()
+	const folders = findLegacyAssetFolders(plugin.app, canvasPath, legacyName)
+	if (folders.length === 0) return
+	const canvasFile = plugin.app.vault.getAbstractFileByPath(canvasPath)
+	if (!(canvasFile instanceof TFile)) return
+	const canvasText = await plugin.app.vault.read(canvasFile)
+	const legacyPaths = activeCanvasLegacyPaths(plugin.app, canvasText, folders)
+	if (legacyPaths.length === 0) return
+	new AssetsMigrationModal(plugin, folders, canvasPath, legacyPaths).open()
 }
 
 class AssetsMigrationModal extends Modal {
-	constructor(private plugin: BragiCanvas, private folders: TFolder[]) {
+	constructor(
+		private plugin: BragiCanvas,
+		private folders: TFolder[],
+		private canvasPath: string,
+		private legacyPaths: string[],
+	) {
 		super(plugin.app)
 	}
 
@@ -39,9 +99,9 @@ class AssetsMigrationModal extends Modal {
 		modalEl.classList.add('bragi-modal')
 		titleEl.setText('Tidy up generated files')
 
-		const totalFiles = this.folders.reduce((n, f) => n + countFiles(f), 0)
+		const totalFiles = this.legacyPaths.length
 		contentEl.createEl('p', {
-			text: `Bragi Canvas used to scatter generated images and videos next to each canvas. You have ${totalFiles} file${totalFiles === 1 ? '' : 's'} in ${this.folders.length} old folder${this.folders.length === 1 ? '' : 's'}.`,
+			text: `Bragi Canvas used to scatter generated images and videos next to each canvas. The active canvas references ${totalFiles} old file${totalFiles === 1 ? '' : 's'} in ${this.folders.length} nearby folder${this.folders.length === 1 ? '' : 's'}.`,
 		})
 		contentEl.createEl('p', {
 			text: `We can move them into a single hidden folder so your vault stays clean. Your canvases will keep working — references are updated automatically, and a backup is saved first.`,
@@ -78,7 +138,7 @@ class AssetsMigrationModal extends Modal {
 				dontAsk.disabled = true
 				migrate.setText('Working…')
 				try {
-					await performMigration(this.plugin, this.folders)
+					await performMigration(this.plugin, this.folders, this.canvasPath, this.legacyPaths)
 					this.plugin.settings.migrationPrompted = true
 					await this.plugin.saveSettings()
 					this.close()
@@ -98,22 +158,6 @@ class AssetsMigrationModal extends Modal {
 	}
 }
 
-function countFiles(folder: TFolder): number {
-	let n = 0
-	for (const c of folder.children) {
-		if (c instanceof TFolder) n += countFiles(c)
-		else n++
-	}
-	return n
-}
-
-function collectFiles(folder: TFolder, out: string[]): void {
-	for (const c of folder.children) {
-		if (c instanceof TFolder) collectFiles(c, out)
-		else out.push(c.path)
-	}
-}
-
 function withoutExt(name: string): string {
 	const i = name.lastIndexOf('.')
 	return i > 0 ? name.substring(0, i) : name
@@ -124,29 +168,28 @@ function ext(name: string): string {
 	return i > 0 ? name.substring(i) : ''
 }
 
-async function performMigration(plugin: BragiCanvas, folders: TFolder[]): Promise<void> {
+async function performMigration(plugin: BragiCanvas, folders: TFolder[], canvasPath: string, legacyPaths: string[]): Promise<void> {
 	const app = plugin.app
 	const adapter = app.vault.adapter
 	const notice = new Notice('Tidying up…', 0)
+	const canvasFile = app.vault.getAbstractFileByPath(canvasPath)
 
 	try {
+		if (!(canvasFile instanceof TFile)) throw new Error('Active canvas file not found')
+
 		// 1. Ensure target dirs exist
 		if (!await adapter.exists('_bragi')) await adapter.mkdir('_bragi')
 		if (!await adapter.exists(NEW_ASSETS_DIR)) await adapter.mkdir(NEW_ASSETS_DIR)
 
-		// 2. Backup all .canvas files
+		// 2. Backup the active .canvas file
 		const ts = new Date().toISOString().replace(/[:.]/g, '-')
 		const backupDir = `${BACKUP_DIR_BASE}/${ts}`
 		if (!await adapter.exists(BACKUP_DIR_BASE)) await adapter.mkdir(BACKUP_DIR_BASE)
 		await adapter.mkdir(backupDir)
 
-		const canvases = app.vault.getFiles().filter(f => f.extension === 'canvas')
-		for (const cv of canvases) {
-			const content = await app.vault.read(cv)
-			const safeName = cv.path.replace(/\//g, '__')
-			await adapter.write(`${backupDir}/${safeName}`, content)
-		}
-		notice.setMessage(`Backed up ${canvases.length} canvas${canvases.length === 1 ? '' : 'es'}…`)
+		const originalCanvasText = await app.vault.read(canvasFile)
+		await adapter.write(`${backupDir}/${canvasPath.replace(/\//g, '__')}`, originalCanvasText)
+		notice.setMessage(`Backed up ${basename(canvasPath)}…`)
 
 		// 3. Move files: oldPath → NEW_ASSETS_DIR/<name>, collision-safe. Build remap.
 		const pathRemap = new Map<string, string>()  // oldVaultPath → newVaultPath
@@ -160,58 +203,52 @@ async function performMigration(plugin: BragiCanvas, folders: TFolder[]): Promis
 			// Existing asset dir may not be listable; continue with an empty seed.
 		}
 
-		for (const folder of folders) {
-			const files: string[] = []
-			collectFiles(folder, files)
-			for (const oldPath of files) {
-				const name = oldPath.split('/').pop()!
-				let targetName = name
-				if (usedNames.has(targetName)) {
-					const base = withoutExt(name)
-					const e = ext(name)
-					let i = 2
-					while (usedNames.has(`${base}_${i}${e}`)) i++
-					targetName = `${base}_${i}${e}`
-				}
-				usedNames.add(targetName)
-				const newPath = `${NEW_ASSETS_DIR}/${targetName}`
-				try {
-					const bin = await adapter.readBinary(oldPath)
-					await adapter.writeBinary(newPath, bin)
-					await adapter.remove(oldPath)
-					pathRemap.set(oldPath, newPath)
-					moved++
-				} catch (err: unknown) {
-					console.error(`Bragi: failed to migrate ${oldPath}:`, err)
-				}
+		for (const oldPath of legacyPaths) {
+			const name = oldPath.split('/').pop()!
+			let targetName = name
+			if (usedNames.has(targetName)) {
+				const base = withoutExt(name)
+				const e = ext(name)
+				let i = 2
+				while (usedNames.has(`${base}_${i}${e}`)) i++
+				targetName = `${base}_${i}${e}`
+			}
+			usedNames.add(targetName)
+			const newPath = `${NEW_ASSETS_DIR}/${targetName}`
+			try {
+				const bin = await adapter.readBinary(oldPath)
+				await adapter.writeBinary(newPath, bin)
+				await adapter.remove(oldPath)
+				pathRemap.set(oldPath, newPath)
+				plugin.rememberGeneratedAsset(newPath, canvasPath)
+				moved++
+			} catch (err: unknown) {
+				console.error(`Bragi: failed to migrate ${oldPath}:`, err)
 			}
 		}
-		notice.setMessage(`Moved ${moved} file${moved === 1 ? '' : 's'}. Updating canvases…`)
+		notice.setMessage(`Moved ${moved} file${moved === 1 ? '' : 's'}. Updating the active canvas…`)
 
-		// 4. Rewrite canvas JSON file references
+		// 4. Rewrite active canvas JSON file references
 		let rewroteCanvases = 0
-		for (const cv of canvases) {
-			try {
-				const text = await app.vault.read(cv)
-				const data = JSON.parse(text)
-				let changed = false
-				for (const n of (data.nodes || [])) {
-					if (n.file && pathRemap.has(n.file)) {
-						n.file = pathRemap.get(n.file)!
-						changed = true
-					}
-					if (n.background && pathRemap.has(n.background)) {
-						n.background = pathRemap.get(n.background)!
-						changed = true
-					}
+		try {
+			const data = JSON.parse(originalCanvasText)
+			let changed = false
+			for (const n of (data.nodes || [])) {
+				if (n.file && pathRemap.has(n.file)) {
+					n.file = pathRemap.get(n.file)!
+					changed = true
 				}
-				if (changed) {
-					await app.vault.modify(cv, JSON.stringify(data, null, '\t'))
-					rewroteCanvases++
+				if (n.background && pathRemap.has(n.background)) {
+					n.background = pathRemap.get(n.background)!
+					changed = true
 				}
-			} catch (err: unknown) {
-				console.error(`Bragi: failed to rewrite ${cv.path}:`, err)
 			}
+			if (changed) {
+				await app.vault.modify(canvasFile, JSON.stringify(data, null, '\t'))
+				rewroteCanvases++
+			}
+		} catch (err: unknown) {
+			console.error(`Bragi: failed to rewrite ${canvasPath}:`, err)
 		}
 
 		// 5. Remove now-empty legacy folders
@@ -225,7 +262,7 @@ async function performMigration(plugin: BragiCanvas, folders: TFolder[]): Promis
 		}
 
 		notice.hide()
-		new Notice(`All tidied up — moved ${moved} file${moved === 1 ? '' : 's'}, updated ${rewroteCanvases} canvas${rewroteCanvases === 1 ? '' : 'es'}. A backup was saved in case anything needs fixing.`, 10000)
+		new Notice(`All tidied up — moved ${moved} file${moved === 1 ? '' : 's'}, updated ${rewroteCanvases} active canvas. A backup was saved in case anything needs fixing.`, 10000)
 	} catch (err) {
 		notice.hide()
 		throw err

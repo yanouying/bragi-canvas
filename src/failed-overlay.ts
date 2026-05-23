@@ -9,10 +9,31 @@ export interface FailedOverlayElements {
 
 function createFailedIcon(): HTMLDivElement {
 	const icon = createDiv({ cls: 'bragi-failed-icon' })
-	icon.innerHTML = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.25"/>
-<path d="M8.25 8.25l7.5 7.5M15.75 8.25l-7.5 7.5" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/>
-</svg>`
+	const svg = icon.createSvg('svg', {
+		attr: {
+			viewBox: '0 0 24 24',
+			'aria-hidden': 'true',
+		},
+	})
+	svg.createSvg('circle', {
+		attr: {
+			cx: '12',
+			cy: '12',
+			r: '9',
+			fill: 'none',
+			stroke: 'currentColor',
+			'stroke-width': '1.25',
+		},
+	})
+	svg.createSvg('path', {
+		attr: {
+			d: 'M8.25 8.25l7.5 7.5M15.75 8.25l-7.5 7.5',
+			fill: 'none',
+			stroke: 'currentColor',
+			'stroke-width': '1.25',
+			'stroke-linecap': 'round',
+		},
+	})
 	return icon
 }
 
@@ -35,10 +56,10 @@ export function updateFailedOverlay(
 	elements.titleEl.textContent = title
 	if (modelName) {
 		elements.modelEl.textContent = modelName
-		elements.modelPillEl.style.display = ''
+		elements.modelPillEl.classList.remove('bragi-hidden')
 	} else {
 		elements.modelEl.textContent = ''
-		elements.modelPillEl.style.display = 'none'
+		elements.modelPillEl.classList.add('bragi-hidden')
 	}
 }
 

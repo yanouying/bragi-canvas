@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.15.1
+
+- Removed runtime filesystem-based CSS hot reload code from the plugin bundle.
+- Replaced the MCP SDK runtime dependency with a lightweight local JSON-RPC HTTP server.
+- Scoped canvas listing, migration, and cleanup flows to Bragi-known canvases and indexed/generated assets instead of full vault enumeration.
+- Replaced automatic clipboard writes in error details with a selectable read-only text area.
+- Removed dynamic Pannellum script injection and imported the viewer bundle normally.
+- Cleaned up community CSS lint warnings for `!important` and `:has()`.
+- Bumped the plugin version to `1.15.1`.
+
 ## 1.15.0
 
 - Added provider-aware multimodal text input validation for upstream images, PDFs, videos, and audio.

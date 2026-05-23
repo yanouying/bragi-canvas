@@ -110,7 +110,7 @@ When the look is right, copy back into the repo with:
 npm run pull:styles-from-vault
 ```
 
-Hot reload is enabled only when `.css-hot-reload` exists in the vault plugin folder (`dev:styles` creates it). Remove that file before release builds.
+`dev:styles` watches `src/styles.css` and copies it into the configured dev vault plugin folder. Release builds do not include any runtime filesystem-based style reload code.
 
 Release tags must be plain semantic versions such as `1.12.4`. Do not prefix tags with `v`.
 

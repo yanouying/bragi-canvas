@@ -120,7 +120,6 @@ export function mountSquare19Loader(loader: HTMLElement): void {
 	}
 }
 
-export function stopSquare19Loader(loader: HTMLElement | null | undefined): void {
-	const el = loader as LoaderWithStop | null | undefined
-	el?._bragiSquare19Stop?.()
+export function stopSquare19Loader(loader: LoaderWithStop | null | undefined): void {
+	loader?._bragiSquare19Stop?.()
 }
