@@ -275,6 +275,10 @@ export function showGenerateBar(
 	runBtn.textContent = 'Run'
 	rightGroup.appendChild(runBtn)
 
+	const upstreamMediaHint = createSpan()
+	upstreamMediaHint.className = 'bragi-bar-upstream-hint bragi-bar-upstream-hint-hidden'
+	leftGroup.appendChild(upstreamMediaHint)
+
 	// ── Read upstream for mode inference ──
 
 	let upstreamImageCount = 0
@@ -806,9 +810,29 @@ export function showGenerateBar(
 
 	let savedParams: Record<string, unknown> | null = null
 
+	function updateUpstreamMediaHint() {
+		if (currentType !== 'text') {
+			upstreamMediaHint.textContent = ''
+			upstreamMediaHint.classList.add('bragi-bar-upstream-hint-hidden')
+			return
+		}
+		const parts: string[] = []
+		if (upstreamPdfCount > 0) parts.push(`${upstreamPdfCount} PDF`)
+		if (upstreamVideoCount > 0) parts.push(`${upstreamVideoCount} video`)
+		if (upstreamAudioCount > 0) parts.push(`${upstreamAudioCount} audio`)
+		if (parts.length === 0) {
+			upstreamMediaHint.textContent = ''
+			upstreamMediaHint.classList.add('bragi-bar-upstream-hint-hidden')
+			return
+		}
+		upstreamMediaHint.textContent = `Upstream: ${parts.join(', ')}`
+		upstreamMediaHint.classList.remove('bragi-bar-upstream-hint-hidden')
+	}
+
 	// ── Run button state ──
 
 	function updateRunState() {
+		updateUpstreamMediaHint()
 		let disabled = false
 		let title = ''
 
