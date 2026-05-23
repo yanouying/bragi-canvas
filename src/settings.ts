@@ -385,6 +385,7 @@ export class BragiSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this
 		containerEl.empty()
+		containerEl.classList.add('bragi-settings')
 
 		addSettingHeading(containerEl, 'Bragi Canvas')
 

@@ -8,6 +8,7 @@ import { getOrderedAudios } from './audio-refs'
 import { getOrderedTextRefs } from './text-refs'
 import type { BragiSettings } from './settings'
 import type { CanvasNode } from './types/canvas-internal'
+import { getNodeElement, getSelectionBounds, positionNodeToolbar } from './node-toolbar-position'
 import { VoicePickerModal } from './ui/voice-picker-modal'
 
 export interface PanelResult {
@@ -970,19 +971,12 @@ export function showGenerateBar(
 
 	// ── Position tracking ──
 
-	const nodeEl = node.nodeEl || node.containerEl
+	const nodeEl = getNodeElement(node)
 	function updatePosition() {
-		if (!activeBar || !nodeEl) return
-		const nodeRect = nodeEl.getBoundingClientRect()
-		const parentRect = bar.offsetParent?.getBoundingClientRect()
-		if (!parentRect) return
-
-		const left = nodeRect.left - parentRect.left + nodeRect.width / 2 - bar.offsetWidth / 2
-		const top = nodeRect.bottom - parentRect.top + 8
-
-		bar.style.left = `${left}px`
-		bar.style.top = `${top}px`
-
+		if (!activeBar) return
+		const bounds = getSelectionBounds([node])
+		if (!bounds) return
+		positionNodeToolbar(activeBar, bounds, { placement: 'auto-below' })
 		positionRAF = window.requestAnimationFrame(updatePosition)
 	}
 	positionRAF = window.requestAnimationFrame(updatePosition)
@@ -1296,25 +1290,11 @@ export function showBatchGenerateBar(
 	if (!barParent) { barParent = activeDocument.body; bar.classList.add('is-body-attached') }
 	barParent.appendChild(bar)
 
-	// Position: bounding box of all selected nodes, center-bottom
 	function updatePosition() {
 		if (!activeBar) return
-		let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-		for (const n of nodes) {
-			const el = (n as unknown).nodeEl || (n as unknown).containerEl
-			if (!el) continue
-			const r = el.getBoundingClientRect()
-			if (r.left < minX) minX = r.left
-			if (r.top < minY) minY = r.top
-			if (r.right > maxX) maxX = r.right
-			if (r.bottom > maxY) maxY = r.bottom
-		}
-		const parentRect = bar.offsetParent?.getBoundingClientRect()
-		if (!parentRect) return
-		const left = (minX + maxX) / 2 - parentRect.left - bar.offsetWidth / 2
-		const top = maxY - parentRect.top + 8
-		bar.style.left = `${left}px`
-		bar.style.top = `${top}px`
+		const bounds = getSelectionBounds(nodes)
+		if (!bounds) return
+		positionNodeToolbar(activeBar, bounds, { placement: 'auto-below' })
 		positionRAF = window.requestAnimationFrame(updatePosition)
 	}
 	positionRAF = window.requestAnimationFrame(updatePosition)

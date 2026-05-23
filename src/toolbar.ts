@@ -2,6 +2,33 @@
 import { setIcon, setTooltip, Notice, App, Modal } from 'obsidian'
 import { around } from 'monkey-around'
 import type { Canvas, CanvasNode } from './types/canvas-internal'
+import {
+	getPreferredInteractionTool,
+	getActiveInteractionTool,
+	setCanvasInteractionTool,
+	setInteractionToolDisplaySync,
+	syncCanvasInteractionTool,
+	teardownCanvasInteractionTool,
+	type CanvasInteractionTool,
+} from './canvas-interaction-tool'
+import { queueSelectionMenuGapSync, resetToolbarPosition } from './node-toolbar-position'
+
+const CARD_MENU_TOOLTIP_OPTS = { placement: 'top' } as const
+
+function setCardMenuTooltip(el: HTMLElement, text: string): void {
+	setTooltip(el, text, CARD_MENU_TOOLTIP_OPTS)
+	// Obsidian skips delay: 0 in setTooltip; attribute must be set directly.
+	el.setAttribute('data-tooltip-delay', '0')
+	el.setAttribute('data-tooltip-position', 'top')
+}
+
+function syncCardMenuTooltips(menu: HTMLElement): void {
+	menu.querySelectorAll<HTMLElement>('.canvas-card-menu-button').forEach((btn) => {
+		const label = btn.getAttribute('aria-label')
+		if (!label) return
+		setCardMenuTooltip(btn, label)
+	})
+}
 
 /**
  * Download a media file from the vault to the user's local filesystem.
@@ -439,6 +466,18 @@ export function patchCanvasMenu(
 
 			const canvas = this.canvas as Canvas
 			const selSize = canvas?.selection?.size || 0
+			const syncMenuGap = () => {
+				if (!canvas?.selection?.size) {
+					resetToolbarPosition(menuEl)
+					return
+				}
+				const hasNodes = Array.from(canvas.selection).some(hasCanvasData)
+				if (hasNodes) {
+					queueSelectionMenuGapSync(menuEl, canvas)
+				} else {
+					resetToolbarPosition(menuEl)
+				}
+			}
 			clearMenuInjection(menuEl)
 
 			// ── Align button: hover-to-open (native menu) ──
@@ -457,11 +496,13 @@ export function patchCanvasMenu(
 			const selectedNodes = selectedItems.filter(hasCanvasData)
 
 			if (selSize > 1) {
-				createMarkButton(menuEl, canvas, selectedNodes)
+				const markBtn = createMarkButton(menuEl, canvas, selectedNodes)
 				const isPurePromptSelection = selectedNodes.length === selSize && selectedNodes.every(node => isPromptNode(getCanvasData(node)))
 
+				let separator: HTMLElement | null = null
+				const generationButtons: HTMLElement[] = []
 				if (isPurePromptSelection && onBatchGenerate) {
-					const separator = createDiv()
+					separator = createDiv()
 					separator.className = 'canvas-menu-separator bragi-separator bragi-actions-separator bragi-menu-injected'
 					menuEl.appendChild(separator)
 
@@ -475,12 +516,23 @@ export function patchCanvasMenu(
 							onBatchGenerate(type, selectedNodes)
 						})
 						menuEl.appendChild(btn)
+						generationButtons.push(btn)
 					}
 				}
 
 				configureStandardMoreItems(menuEl, 0)
 				addMoreButton(menuEl)
+				const moreBtn = menuEl.querySelector<HTMLElement>('.bragi-more')
+				const alignBtn = findBuiltinByLabel(menuEl, 'align') || findBuiltinByLabel(menuEl, 'arrange')
+				reorderMenuButtons(menuEl, [
+					...generationButtons,
+					separator,
+					alignBtn,
+					markBtn,
+					moreBtn,
+				])
 				next.call(this)
+				syncMenuGap()
 				return result
 			}
 
@@ -515,6 +567,7 @@ export function patchCanvasMenu(
 					(el as HTMLElement).classList.add('bragi-hidden')
 				})
 				next.call(this)
+				syncMenuGap()
 				return result
 			}
 
@@ -532,6 +585,7 @@ export function patchCanvasMenu(
 					moreBtn,
 				])
 				next.call(this)
+				syncMenuGap()
 				return result
 			}
 
@@ -556,6 +610,7 @@ export function patchCanvasMenu(
 				configureStandardMoreItems(menuEl, 0)
 				addMoreButton(menuEl)
 				next.call(this)
+				syncMenuGap()
 				return result
 			}
 
@@ -568,6 +623,7 @@ export function patchCanvasMenu(
 				configureStandardMoreItems(menuEl, 0)
 				addMoreButton(menuEl)
 				next.call(this)
+				syncMenuGap()
 				return result
 			}
 
@@ -592,6 +648,7 @@ export function patchCanvasMenu(
 				configureStandardMoreItems(menuEl, 0)
 				addMoreButton(menuEl)
 				next.call(this)
+				syncMenuGap()
 				return result
 			}
 
@@ -654,6 +711,7 @@ export function patchCanvasMenu(
 					moreBtn,
 				])
 				next.call(this)
+				syncMenuGap()
 				return result
 			}
 
@@ -663,6 +721,7 @@ export function patchCanvasMenu(
 
 			// Re-render to recalculate position with new width
 			next.call(this)
+			syncMenuGap()
 
 			return result
 		},
@@ -706,70 +765,195 @@ export function replaceCanvasControlIcons(containerEl: HTMLElement): void {
 	})
 }
 
-/** Map from bottom card menu aria-label keywords to Bragi card icon names.
- *  Matches actual Obsidian aria-labels: "Drag to add card",
- *  "Drag to add note from vault", "Drag to add media from vault". */
-const CANVAS_CARD_REPLACEMENTS: [string, string][] = [
-	['add note', 'bragi-card-clipboard'],
-	['add media', 'bragi-card-file'],
-	['add card', 'bragi-card-text'],
+/** Native Obsidian add buttons in DOM order: text, note, media. */
+const NATIVE_CARD_BUTTONS: { icon: string; tooltip: string }[] = [
+	{ icon: 'bragi-card-text', tooltip: 'Text' },
+	{ icon: 'bragi-card-clipboard', tooltip: 'Note' },
+	{ icon: 'bragi-card-file', tooltip: 'Media' },
 ]
 
-/**
- * Replace Obsidian's built-in canvas card menu icons (bottom toolbar)
- * with Bragi custom icons, and append export / import / settings buttons.
- */
-export function replaceCanvasCardMenuIcons(containerEl: HTMLElement, app?: App, pluginId?: string): void {
-	const menu = containerEl.querySelector('.canvas-card-menu')
-	if (!menu) return
-
-	const icons = menu.querySelectorAll('.canvas-card-menu-button')
-	icons.forEach((el) => {
-		const label = (el.getAttribute('aria-label') || '').toLowerCase()
-		for (const [keyword, iconName] of CANVAS_CARD_REPLACEMENTS) {
-			if (label.includes(keyword)) {
-				setIcon(el as HTMLElement, iconName)
-				break
-			}
-		}
+function replaceNativeCardMenuIcons(menu: HTMLElement): void {
+	menu.querySelectorAll<HTMLElement>('.canvas-card-menu-button.mod-draggable').forEach((el, index) => {
+		const config = NATIVE_CARD_BUTTONS[index]
+		if (!config) return
+		setIcon(el, config.icon)
+		setCardMenuTooltip(el, config.tooltip)
 	})
+}
 
-	if (!app) return
-	if (menu.querySelector('.bragi-card-separator')) return // already injected
+function syncInteractionToolButtons(menu: HTMLElement, canvas: Canvas): void {
+	const activeTool = getActiveInteractionTool(canvas)
+	menu.querySelectorAll<HTMLElement>('.bragi-interaction-tool').forEach((btn) => {
+		const tool = btn.dataset.bragiTool as CanvasInteractionTool | undefined
+		btn.classList.toggle('is-active', tool === activeTool)
+		btn.setAttribute('aria-pressed', tool === activeTool ? 'true' : 'false')
+	})
+}
 
-	const makeBtn = (iconName: string, tooltip: string, onClick: () => void): HTMLElement => {
+function shouldAutoSwitchToCursor(button: HTMLElement): boolean {
+	if (button.classList.contains('bragi-interaction-tool')) return false
+	if (button.classList.contains('mod-draggable')) return true
+	return button.dataset.bragiAutoCursor === 'true'
+}
+
+function attachAutoCursorSwitch(menu: HTMLElement, canvas: Canvas): void {
+	if (menu.dataset.bragiAutoCursorBound === 'true') return
+	menu.dataset.bragiAutoCursorBound = 'true'
+
+	menu.addEventListener('pointerdown', (event) => {
+		if (getPreferredInteractionTool() !== 'hand') return
+		const target = (event.target as HTMLElement | null)?.closest('.canvas-card-menu-button')
+		if (!(target instanceof HTMLElement) || !shouldAutoSwitchToCursor(target)) return
+		setCanvasInteractionTool(canvas, 'cursor')
+		syncInteractionToolButtons(menu, canvas)
+	}, true)
+}
+
+function getLastNativeAddButton(menu: HTMLElement): HTMLElement | null {
+	const nativeAdds = menu.querySelectorAll<HTMLElement>('.canvas-card-menu-button.mod-draggable')
+	return nativeAdds.length ? nativeAdds[nativeAdds.length - 1] : null
+}
+
+function ensureCardMenuLayout(menu: HTMLElement): void {
+	const importBtn = menu.querySelector<HTMLElement>('.bragi-card-import')
+	const actionSep = menu.querySelector<HTMLElement>('.bragi-card-action-separator')
+	const exportBtn = menu.querySelector<HTMLElement>('.bragi-card-export')
+	const settingsBtn = menu.querySelector<HTMLElement>('.bragi-card-settings')
+	const lastNative = getLastNativeAddButton(menu)
+
+	if (importBtn && lastNative && importBtn.previousElementSibling !== lastNative) {
+		menu.insertBefore(importBtn, lastNative.nextSibling)
+	}
+
+	if (actionSep && importBtn && actionSep.previousElementSibling !== importBtn) {
+		menu.insertBefore(actionSep, importBtn.nextSibling)
+	}
+
+	if (exportBtn && actionSep && exportBtn.previousElementSibling !== actionSep) {
+		menu.insertBefore(exportBtn, actionSep.nextSibling)
+	}
+
+	if (settingsBtn && exportBtn && settingsBtn.previousElementSibling !== exportBtn) {
+		menu.insertBefore(settingsBtn, exportBtn.nextSibling)
+	}
+}
+
+function appendBragiCardMenuActions(menu: HTMLElement, app: App, pluginId?: string): void {
+	const makeBtn = (
+		iconName: string,
+		tooltip: string,
+		onClick: () => void,
+		extraClass: string,
+		options?: { autoCursor?: boolean },
+	): HTMLElement => {
 		const btn = createDiv()
-		btn.className = 'canvas-card-menu-button bragi-card-extra'
+		btn.className = `canvas-card-menu-button bragi-card-extra ${extraClass}`
+		if (options?.autoCursor) btn.dataset.bragiAutoCursor = 'true'
 		setIcon(btn, iconName)
-		setTooltip(btn, tooltip, { placement: 'top' })
-		btn.addEventListener('click', (e) => {
-			e.preventDefault()
-			e.stopPropagation()
+		setCardMenuTooltip(btn, tooltip)
+		btn.addEventListener('click', (event) => {
+			event.preventDefault()
+			event.stopPropagation()
 			onClick()
 		})
 		return btn
 	}
 
-	const sep = createDiv()
-	sep.className = 'bragi-card-separator'
-	menu.appendChild(sep)
-
-	menu.appendChild(makeBtn('bragi-card-export', 'Export canvas as .bragi package', () => {
-		(app as unknown).commands.executeCommandById('bragi-canvas:bragi-export-canvas')
-	}))
-
-	menu.appendChild(makeBtn('bragi-card-import', 'Import .bragi package', () => {
+	const importBtn = makeBtn('bragi-card-import', 'Import canvas', () => {
 		new BragiImportChoiceModal(app, (mode) => {
 			const id = mode === 'merge' ? 'bragi-canvas:bragi-import-merge' : 'bragi-canvas:bragi-import-new'
 			;(app as unknown).commands.executeCommandById(id)
 		}).open()
-	}))
+	}, 'bragi-card-import', { autoCursor: true })
 
-	menu.appendChild(makeBtn('bragi-card-settings', 'Bragi Canvas settings', () => {
+	const lastNative = getLastNativeAddButton(menu)
+	if (lastNative) menu.insertBefore(importBtn, lastNative.nextSibling)
+	else menu.appendChild(importBtn)
+
+	const actionSep = createDiv()
+	actionSep.className = 'bragi-card-separator bragi-card-action-separator'
+	menu.appendChild(actionSep)
+
+	menu.appendChild(makeBtn('bragi-card-export', 'Export canvas', () => {
+		(app as unknown).commands.executeCommandById('bragi-canvas:bragi-export-canvas')
+	}, 'bragi-card-export'))
+
+	menu.appendChild(makeBtn('bragi-card-settings', 'Settings', () => {
 		const setting = (app as unknown).setting
 		setting.open()
 		setting.openTabById(pluginId || 'bragi-canvas')
-	}))
+	}, 'bragi-card-settings'))
+
+	ensureCardMenuLayout(menu)
+}
+
+function prependInteractionTools(menu: HTMLElement, canvas: Canvas): void {
+	const cursorBtn = createDiv()
+	cursorBtn.className = 'canvas-card-menu-button bragi-interaction-tool'
+	cursorBtn.dataset.bragiTool = 'cursor'
+	cursorBtn.setAttribute('role', 'button')
+	cursorBtn.setAttribute('aria-pressed', 'false')
+	setIcon(cursorBtn, 'bragi-card-cursor')
+	setCardMenuTooltip(cursorBtn, 'Select tool')
+
+	const handBtn = createDiv()
+	handBtn.className = 'canvas-card-menu-button bragi-interaction-tool'
+	handBtn.dataset.bragiTool = 'hand'
+	handBtn.setAttribute('role', 'button')
+	handBtn.setAttribute('aria-pressed', 'false')
+	setIcon(handBtn, 'bragi-card-hand')
+	setCardMenuTooltip(handBtn, 'Hand tool')
+
+	const sep = createDiv()
+	sep.className = 'bragi-card-separator bragi-tool-separator'
+
+	const onToolClick = (tool: CanvasInteractionTool) => (event: MouseEvent) => {
+		event.preventDefault()
+		event.stopPropagation()
+		setCanvasInteractionTool(canvas, tool)
+		syncInteractionToolButtons(menu, canvas)
+	}
+	cursorBtn.addEventListener('click', onToolClick('cursor'))
+	handBtn.addEventListener('click', onToolClick('hand'))
+
+	menu.insertBefore(sep, menu.firstChild)
+	menu.insertBefore(handBtn, menu.firstChild)
+	menu.insertBefore(cursorBtn, menu.firstChild)
+}
+
+/**
+ * Replace Obsidian's built-in canvas card menu icons (bottom toolbar)
+ * with Bragi custom icons, and append export / import / settings buttons.
+ */
+export function replaceCanvasCardMenuIcons(containerEl: HTMLElement, canvas: Canvas, app?: App, pluginId?: string): void {
+	const menu = containerEl.querySelector('.canvas-card-menu')
+	if (!menu) return
+
+	replaceNativeCardMenuIcons(menu)
+
+	if (menu.classList.contains('bragi-card-menu-ready')) {
+		replaceNativeCardMenuIcons(menu)
+		ensureCardMenuLayout(menu)
+		syncCardMenuTooltips(menu)
+		syncInteractionToolButtons(menu, canvas)
+		syncCanvasInteractionTool(canvas)
+		setInteractionToolDisplaySync(() => syncInteractionToolButtons(menu, canvas))
+		attachAutoCursorSwitch(menu, canvas)
+		return
+	}
+
+	if (app) {
+		appendBragiCardMenuActions(menu, app, pluginId)
+	}
+
+	prependInteractionTools(menu, canvas)
+	attachAutoCursorSwitch(menu, canvas)
+	setInteractionToolDisplaySync(() => syncInteractionToolButtons(menu, canvas))
+
+	menu.classList.add('bragi-card-menu-ready')
+	syncCardMenuTooltips(menu)
+	syncInteractionToolButtons(menu, canvas)
+	syncCanvasInteractionTool(canvas)
 }
 
 class BragiImportChoiceModal extends Modal {
@@ -817,7 +1001,10 @@ export function removeToolbarButtons(): void {
 		}
 		el.remove()
 	})
-	activeDocument.querySelectorAll('.canvas-card-menu .bragi-card-extra, .canvas-card-menu .bragi-card-separator').forEach(el => el.remove())
+	activeDocument.querySelectorAll('.canvas-card-menu .bragi-card-extra, .canvas-card-menu .bragi-card-separator, .canvas-card-menu .bragi-interaction-tool, .canvas-card-menu .bragi-tool-separator, .canvas-card-menu .bragi-card-action-separator').forEach(el => el.remove())
+	activeDocument.querySelectorAll('.canvas-card-menu.bragi-card-menu-ready').forEach(el => el.classList.remove('bragi-card-menu-ready'))
+	setInteractionToolDisplaySync(null)
+	teardownCanvasInteractionTool()
 }
 
 /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return -- Resume strict linting after the runtime-shaped data boundary. */

@@ -25,8 +25,11 @@ import { ensureBytePlusAsset, getBytePlusAssetCreds } from './byteplus-asset-flo
 import { splitImageNodeIntoTiles } from './grid-split-flow'
 import { isSupportedLanguage, LanguageGateModal } from './ui/language-gate'
 import { installAlwaysNewTab } from './always-new-tab'
+import { startCssHotReload } from './dev-css-hot-reload'
 import type { Canvas, CanvasNode } from './types/canvas-internal'
 import type { VoiceSourceMode } from './models/types'
+import { existsSync } from 'fs'
+import { join } from 'path'
 
 export default class BragiCanvas extends Plugin {
 	settings: BragiSettings = DEFAULT_SETTINGS
@@ -43,6 +46,7 @@ export default class BragiCanvas extends Plugin {
 	// Canvases we've already swept this session — avoid repeat sweeps on every
 	// layout-change event.
 	private sweptCanvasPaths = new Set<string>()
+	private cssHotReloadStop: (() => void) | null = null
 
 	async onload() {
 		// Bragi relies on Obsidian running in English (our UI hooks match the
@@ -128,9 +132,15 @@ export default class BragiCanvas extends Plugin {
 		})
 
 		if (this.settings.mcpEnabled) this.startMcpServer()
+
+		if (existsSync(join(this.manifest.dir, '.css-hot-reload'))) {
+			this.cssHotReloadStop = startCssHotReload(this.manifest.dir)
+		}
 	}
 
 	onunload() {
+		this.cssHotReloadStop?.()
+		this.cssHotReloadStop = null
 		this.stopMcpServer()
 		unpatchCanvasMenu()
 		removeToolbarButtons()
@@ -242,7 +252,7 @@ export default class BragiCanvas extends Plugin {
 		const containerEl = (view).containerEl as HTMLElement
 		if (containerEl) {
 			replaceCanvasControlIcons(containerEl)
-			replaceCanvasCardMenuIcons(containerEl, this.app, this.manifest.id)
+			replaceCanvasCardMenuIcons(containerEl, canvas, this.app, this.manifest.id)
 		}
 
 	}
