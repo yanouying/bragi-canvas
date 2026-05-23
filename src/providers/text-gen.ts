@@ -73,6 +73,14 @@ function videoMimeTypeFromRef(ref: string): string {
 	return 'video/mp4'
 }
 
+function imageMimeTypeFromRef(ref: string): string {
+	const path = ref.split(/[?#]/)[0].toLowerCase()
+	if (path.endsWith('.jpg') || path.endsWith('.jpeg')) return 'image/jpeg'
+	if (path.endsWith('.webp')) return 'image/webp'
+	if (path.endsWith('.gif')) return 'image/gif'
+	return 'image/png'
+}
+
 function audioMimeTypeFromRef(ref: string): string {
 	const path = ref.split(/[?#]/)[0].toLowerCase()
 	if (path.endsWith('.wav')) return 'audio/wav'
@@ -382,12 +390,15 @@ export class GeminiTextProvider implements TextGenProvider {
 		// Build parts: media first, then text
 		const parts: unknown[] = []
 
-		for (const dataUri of refImages) {
-			const parsed = parseDataUri(dataUri)
+		for (const ref of refImages) {
+			const parsed = parseDataUri(ref)
 			if (parsed) {
 				parts.push({
 					inlineData: { mimeType: parsed.mimeType, data: parsed.data },
 				})
+			} else {
+				const file = await this.fileDataPart(ref, imageMimeTypeFromRef(ref), 'image')
+				parts.push({ fileData: file })
 			}
 		}
 		for (const ref of refVideos) {

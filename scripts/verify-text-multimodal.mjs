@@ -150,6 +150,12 @@ assert.match(
 )
 
 assert.match(
+	textGenSource,
+	/for \(const ref of refImages\)[\s\S]*parseDataUri\(ref\)[\s\S]*fileDataPart\(ref, imageMimeTypeFromRef\(ref\), 'image'\)/,
+	'Gemini text provider must preserve uploaded image URLs as fileData parts',
+)
+
+assert.match(
 	tokenRouterSource,
 	/const refPdfs: string\[\] = Array\.isArray\(params\?\.refPdfs\) \? params\.refPdfs : \[\]/,
 	'TokenRouter text provider must receive upstream PDF refs for live payload testing',
@@ -159,6 +165,12 @@ assert.match(
 	tokenRouterSource,
 	/type: 'file'[\s\S]*file_data: ref/,
 	'TokenRouter text provider must send file refs as OpenAI-compatible file content parts',
+)
+
+assert.match(
+	tokenRouterSource,
+	/if \(isHttpUrl\(ref\)\) \{[\s\S]*file_data: ref[\s\S]*return \{[\s\S]*file_id: ref/,
+	'TokenRouter text provider must send relay URLs as file_data, not file_id',
 )
 
 assert.match(

@@ -93,6 +93,12 @@ function videoExtFromUrl(url: string): string {
 	return 'mp4'
 }
 
+function fileExtFromUrl(url: string): string {
+	const clean = url.split(/[?#]/)[0].toLowerCase()
+	const match = clean.match(/\.([a-z0-9]+)$/)
+	return match?.[1] || 'bin'
+}
+
 function pushUnique(target: string[], value: string): void {
 	const text = value.trim()
 	if (text && !target.includes(text)) target.push(text)
@@ -327,18 +333,27 @@ export class TokenRouterTextProvider implements TextGenProvider {
 
 	private fileContentPart(ref: string, basename: string): unknown {
 		const decoded = dataUriToBytes(ref)
-		if (!decoded) {
+		if (decoded) {
 			return {
 				type: 'file',
-				file: { file_id: ref, filename: basename },
+				file: {
+					filename: `${basename}.${decoded.ext}`,
+					file_data: ref,
+				},
+			}
+		}
+		if (isHttpUrl(ref)) {
+			return {
+				type: 'file',
+				file: {
+					filename: `${basename}.${fileExtFromUrl(ref)}`,
+					file_data: ref,
+				},
 			}
 		}
 		return {
 			type: 'file',
-			file: {
-				filename: `${basename}.${decoded.ext}`,
-				file_data: ref,
-			},
+			file: { file_id: ref, filename: basename },
 		}
 	}
 }
