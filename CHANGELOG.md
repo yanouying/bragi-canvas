@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.15.0
+
+- Added provider-aware multimodal text input validation for upstream images, PDFs, videos, and audio.
+- Added native DashScope Qwen 3.6 Plus text generation with multimodal refs.
+- Exposed `supportedInputs` and `unsupportedInputs` for text models through MCP `list_models`.
+- Preserved uploaded Gemini and TokenRouter file refs so large multimodal inputs are sent correctly.
+- Included the Bragi theme, canvas UI polish, and improved placeholder overlays from the latest mainline UI work.
+- Bumped the plugin version to `1.15.0`.
+
 ## 1.14.3
 
 - Added APIMart GPT-5.5 text provider support.
