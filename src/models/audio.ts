@@ -219,6 +219,7 @@ export const minimaxTTS: ModelConfig = {
 			default: '1.0',
 		},
 	],
+	voiceConfig: { builtin: true, clone: true, design: false },
 }
 
 export const dashScopeCosyVoice35Plus: ModelConfig = {
