@@ -105,12 +105,15 @@ export function updateRefThumbnails(canvas: Canvas, node: CanvasNode, app: App):
 
 		// Asset ID indicator — read from the source image node
 		const sourceImageNode = findImageNode(canvas, imgPath)
-		const assetId = sourceImageNode ? (sourceImageNode.getData() as unknown).bragiAssetId : null
+		const assetIds = sourceImageNode ? getNodeAssetIds(sourceImageNode) : {}
+		const assetIdCount = Object.keys(assetIds).length
 
-		if (assetId) {
+		if (assetIdCount > 0) {
 			const assetDot = createDiv()
 			assetDot.className = 'bragi-asset-dot'
-			assetDot.title = `Asset: ${assetId}`
+			assetDot.title = Object.entries(assetIds)
+				.map(([provider, id]) => `${provider}: ${id}`)
+				.join('\n')
 			wrapper.appendChild(assetDot)
 		}
 
@@ -184,17 +187,36 @@ function findImageNode(canvas: Canvas, imgPath: string): CanvasNode | null {
 	return null
 }
 
+function getNodeAssetIds(node: CanvasNode): Record<string, string> {
+	const d = node.getData() as { bragiAssetId?: string; bragiAssetIds?: Record<string, string> }
+	const ids = { ...(d.bragiAssetIds || {}) }
+	if (d.bragiAssetId && !ids.legacy) ids.legacy = d.bragiAssetId
+	return ids
+}
+
+function getProviderAssetId(node: CanvasNode, providerId?: string): string {
+	const d = node.getData() as { bragiAssetId?: string; bragiAssetIds?: Record<string, string> }
+	if (providerId) {
+		const scoped = d.bragiAssetIds?.[providerId]
+		if (scoped) return scoped
+		if ((providerId === 'bytedance' || providerId === 'byteplus') && d.bragiAssetId) return d.bragiAssetId
+		return ''
+	}
+	return d.bragiAssetId || ''
+}
+
 /**
  * Get asset ID map for a node's upstream images.
- * Reads bragiAssetId from each source image node.
+ * Reads provider-scoped bragiAssetIds first; legacy bragiAssetId only falls
+ * back for Volcengine/BytePlus compatibility.
  */
-export function getAssetIds(canvas: Canvas, node: CanvasNode): Record<string, string> {
+export function getAssetIds(canvas: Canvas, node: CanvasNode, providerId?: string): Record<string, string> {
 	const images = getOrderedImages(canvas, node)
 	const result: Record<string, string> = {}
 	for (const imgPath of images) {
 		const imgNode = findImageNode(canvas, imgPath)
 		if (imgNode) {
-			const assetId = (imgNode.getData() as unknown).bragiAssetId
+			const assetId = getProviderAssetId(imgNode, providerId)
 			if (assetId) result[imgPath] = assetId
 		}
 	}
