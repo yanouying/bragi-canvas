@@ -24,6 +24,7 @@ import { checkMigration } from './migrate-assets'
 import { migrateProviderPrefs } from './migrate-providers'
 import { startAttachmentRedirect } from './attachment-redirect'
 import { ensureBytePlusAsset, getBytePlusAssetCreds } from './byteplus-asset-flow'
+import { ensureTokenRouterModelArkAsset, getTokenRouterModelArkCreds } from './tokenrouter-asset-flow'
 import { splitImageNodeIntoTiles } from './grid-split-flow'
 import { isSupportedLanguage, LanguageGateModal } from './ui/language-gate'
 import { installAlwaysNewTab } from './always-new-tab'
@@ -31,6 +32,14 @@ import type { Canvas, CanvasNode } from './types/canvas-internal'
 import type { VoiceSourceMode } from './models/types'
 import { validateTextInputs } from './models/text-input-capabilities'
 import { prepareTextInputs } from './text-input-prep'
+
+type SeedanceAssetProviderId = 'tokenrouter' | 'byteplus' | 'bytedance'
+
+const SEEDANCE_ASSET_PROVIDER_LABELS: Record<SeedanceAssetProviderId, string> = {
+	tokenrouter: 'TokenRouter',
+	byteplus: 'BytePlus',
+	bytedance: 'Volcengine',
+}
 
 export default class BragiCanvas extends Plugin {
 	settings: BragiSettings = DEFAULT_SETTINGS
@@ -79,12 +88,13 @@ export default class BragiCanvas extends Plugin {
 			this.app.workspace.on('canvas:node-menu', (menu: Menu, node: CanvasNode) => {
 				const nodeData = node.getData()
 				if (nodeData.type !== 'file') return
-				const filePath = (nodeData as unknown).file || ''
-				if (!/\.(png|jpg|jpeg|webp|gif)$/i.test(filePath)) return
+				const filePath = (nodeData as { file?: string }).file || ''
+				if (!/\.(png|jpg|jpeg|webp|bmp|tiff?|gif|heic|heif)$/i.test(filePath)) return
 
-				const currentId = (nodeData as unknown).bragiAssetId || ''
+				const assetIds = this.getNodeAssetIdMap(node)
+				const scopedCount = Object.keys(assetIds).length
 				menu.addItem((item) => {
-					item.setTitle(currentId ? `Asset ID: ${currentId}` : 'Set Asset ID')
+					item.setTitle(scopedCount ? `Seedance asset IDs: ${scopedCount}` : 'Set Seedance asset ID')
 						.setIcon('link')
 						.onClick(() => this.showAssetIdModal(node))
 				})
@@ -451,14 +461,18 @@ export default class BragiCanvas extends Plugin {
 				refAudios = prepared.refAudios
 				refPdfs = prepared.refPdfs
 			} else {
-			// Only native Volcengine / BytePlus Seedance can consume asset:// IDs.
+			// Seedance can consume provider-specific asset:// IDs.
 			const isSeedanceModel = model.id.startsWith('seedance')
 			const isNativeSeedance = (activeProvider === 'bytedance' || activeProvider === 'byteplus') && isSeedanceModel
 			const supportsSeedanceRefs = isNativeSeedance || (activeProvider === 'tokenrouter' && isSeedanceModel)
-			const assetIdMap = isNativeSeedance ? getAssetIds(canvas, node) : {}
+			const hasSeedanceMediaRefs = uniqueImages.length > 0 || uniqueAudios.length > 0 || uniqueVideos.length > 0
+			const assetIdMap = supportsSeedanceRefs ? getAssetIds(canvas, node, activeProvider) : {}
 			// BytePlus asset library: run when Seedance has reference media and AK/SK configured.
-			const bytePlusCreds = (activeProvider === 'byteplus' && isNativeSeedance && (uniqueImages.length > 0 || uniqueAudios.length > 0 || uniqueVideos.length > 0))
+			const bytePlusCreds = (activeProvider === 'byteplus' && isNativeSeedance && hasSeedanceMediaRefs)
 				? getBytePlusAssetCreds(this)
+				: null
+			const tokenRouterModelArkCreds = (activeProvider === 'tokenrouter' && isSeedanceModel && hasSeedanceMediaRefs)
+				? getTokenRouterModelArkCreds(this)
 				: null
 			for (const imgPath of uniqueImages) {
 				if (assetIdMap[imgPath]) {
@@ -466,6 +480,8 @@ export default class BragiCanvas extends Plugin {
 				} else if (bytePlusCreds) {
 					// Run through BytePlus asset library so faces can be reviewed+approved
 					refImages.push(await ensureBytePlusAsset(this, canvas, imgPath, bytePlusCreds))
+				} else if (tokenRouterModelArkCreds) {
+					refImages.push(await ensureTokenRouterModelArkAsset(this, canvas, imgPath, tokenRouterModelArkCreds))
 				} else {
 					const binary = await this.app.vault.adapter.readBinary(imgPath)
 					const base64 = arrayBufferToBase64(binary)
@@ -484,6 +500,8 @@ export default class BragiCanvas extends Plugin {
 					if (bytePlusCreds) {
 						// Route audio through asset library for content review
 						refAudios.push(await ensureBytePlusAsset(this, canvas, audioPath, bytePlusCreds))
+					} else if (tokenRouterModelArkCreds) {
+						refAudios.push(await ensureTokenRouterModelArkAsset(this, canvas, audioPath, tokenRouterModelArkCreds))
 					} else {
 						const binary = await this.app.vault.adapter.readBinary(audioPath)
 						const ext = audioPath.split('.').pop()?.toLowerCase() || 'mp3'
@@ -511,6 +529,8 @@ export default class BragiCanvas extends Plugin {
 					for (const videoPath of uniqueVideos) {
 						if (isNativeSeedance && bytePlusCreds) {
 							refVideos.push(await ensureBytePlusAsset(this, canvas, videoPath, bytePlusCreds))
+						} else if (tokenRouterModelArkCreds) {
+							refVideos.push(await ensureTokenRouterModelArkAsset(this, canvas, videoPath, tokenRouterModelArkCreds))
 						} else {
 							const binary = await this.app.vault.adapter.readBinary(videoPath)
 							const ext = getFileExtension(videoPath, 'mp4')
@@ -802,19 +822,74 @@ export default class BragiCanvas extends Plugin {
 		}
 	}
 
+	private getNodeAssetIdMap(node: CanvasNode): Record<string, string> {
+		const data = node.getData() as { bragiAssetId?: string; bragiAssetIds?: Record<string, string> }
+		const ids = { ...(data.bragiAssetIds || {}) }
+		if (data.bragiAssetId && !ids.legacy) ids.legacy = data.bragiAssetId
+		return ids
+	}
+
+	private getNodeAssetId(node: CanvasNode, provider: SeedanceAssetProviderId): string {
+		const data = node.getData() as { bragiAssetId?: string; bragiAssetIds?: Record<string, string> }
+		const scoped = data.bragiAssetIds?.[provider]
+		if (scoped) return scoped
+		if ((provider === 'bytedance' || provider === 'byteplus') && data.bragiAssetId) return data.bragiAssetId
+		return ''
+	}
+
+	private setNodeAssetId(node: CanvasNode, provider: SeedanceAssetProviderId, assetId: string): void {
+		const data = node.getData() as { bragiAssetId?: string; bragiAssetIds?: Record<string, string> }
+		const hadScopedId = !!data.bragiAssetIds?.[provider]
+		const ids = { ...(data.bragiAssetIds || {}) }
+		if (assetId) ids[provider] = assetId
+		else delete ids[provider]
+
+		const next: typeof data = { ...data }
+		if (Object.keys(ids).length > 0) next.bragiAssetIds = ids
+		else delete next.bragiAssetIds
+		if (!assetId && !hadScopedId && (provider === 'bytedance' || provider === 'byteplus')) {
+			delete next.bragiAssetId
+		}
+		node.setData(next)
+	}
+
 	showAssetIdModal(node: CanvasNode): void {
-		const data = node.getData() as unknown
-		const currentId = data.bragiAssetId || ''
+		const data = node.getData() as { bragiAssetId?: string; bragiAssetIds?: Record<string, string> }
+		let providerId: SeedanceAssetProviderId = data.bragiAssetIds?.tokenrouter
+			? 'tokenrouter'
+			: data.bragiAssetIds?.byteplus
+				? 'byteplus'
+				: (data.bragiAssetIds?.bytedance || data.bragiAssetId)
+					? 'bytedance'
+					: 'tokenrouter'
+		let currentId = this.getNodeAssetId(node, providerId)
 
 		const modal = new Modal(this.app)
 		modal.modalEl.classList.add('bragi-modal')
-		modal.titleEl.setText('Set asset ID')
+		modal.titleEl.setText('Set seedance asset ID')
 		modal.contentEl.createEl('p', {
-			text: 'Paste a volcengine asset ID to use this image as a seedance face reference.',
+			text: 'Asset ids are provider-specific. The same image can have separate tokenrouter, byteplus, and volcengine ids.',
 			cls: 'setting-item-description',
 		})
 
 		let inputValue = currentId
+		let inputEl: HTMLInputElement | null = null
+
+		new Setting(modal.contentEl)
+			.setName('Provider')
+			.addDropdown(dropdown => {
+				for (const [value, label] of Object.entries(SEEDANCE_ASSET_PROVIDER_LABELS)) {
+					dropdown.addOption(value, label)
+				}
+				dropdown
+					.setValue(providerId)
+					.onChange(value => {
+						providerId = value as SeedanceAssetProviderId
+						currentId = this.getNodeAssetId(node, providerId)
+						inputValue = currentId
+						if (inputEl) inputEl.value = currentId
+					})
+			})
 
 		new Setting(modal.contentEl)
 			.setName('Asset ID')
@@ -822,19 +897,18 @@ export default class BragiCanvas extends Plugin {
 				text.setPlaceholder('Asset-20260401123823-6d4x2')
 					.setValue(currentId)
 					.onChange(v => { inputValue = v })
-			text.inputEl.classList.add('bragi-full-width')
-		})
+				inputEl = text.inputEl
+				text.inputEl.classList.add('bragi-full-width')
+			})
 
 		const btnContainer = modal.contentEl.createDiv({ cls: 'modal-button-container' })
 
-		if (currentId) {
-			const clearBtn = btnContainer.createEl('button', { text: 'Clear' })
-			clearBtn.addEventListener('click', () => {
-				node.setData({ ...node.getData(), bragiAssetId: undefined })
-				new Notice('Asset ID cleared')
-				modal.close()
-			})
-		}
+		const clearBtn = btnContainer.createEl('button', { text: 'Clear' })
+		clearBtn.addEventListener('click', () => {
+			this.setNodeAssetId(node, providerId, '')
+			new Notice(`${SEEDANCE_ASSET_PROVIDER_LABELS[providerId]} asset ID cleared`)
+			modal.close()
+		})
 
 		const cancelBtn = btnContainer.createEl('button', { text: 'Cancel' })
 		cancelBtn.addEventListener('click', () => modal.close())
@@ -843,10 +917,10 @@ export default class BragiCanvas extends Plugin {
 		saveBtn.addEventListener('click', () => {
 			const val = inputValue.trim()
 			if (val) {
-				node.setData({ ...node.getData(), bragiAssetId: val })
-				new Notice(`Asset ID saved`)
+				this.setNodeAssetId(node, providerId, val)
+				new Notice(`${SEEDANCE_ASSET_PROVIDER_LABELS[providerId]} asset ID saved`)
 			} else {
-				node.setData({ ...node.getData(), bragiAssetId: undefined })
+				this.setNodeAssetId(node, providerId, '')
 			}
 			modal.close()
 		})

@@ -27,7 +27,11 @@ export interface McpToolResult {
 type ToolArgs<Args extends ToolSchema> = z.infer<z.ZodObject<Args>>
 
 type JsonMap = Record<string, unknown>
-type BragiCanvasNodeData = AllCanvasNodeData & { bragiAssetId?: string }
+type SeedanceAssetProviderId = 'tokenrouter' | 'byteplus' | 'bytedance'
+type BragiCanvasNodeData = AllCanvasNodeData & {
+	bragiAssetId?: string
+	bragiAssetIds?: Record<string, string>
+}
 type SerializableEdge = CanvasEdgeData | CanvasEdge
 type FileView = { file?: TFile }
 type EdgeStore = Map<string, CanvasEdge> | CanvasEdge[]
@@ -854,24 +858,29 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 		{
 			category: 'Files / assets',
 			name: 'set_asset_id',
-			description: 'Bind a Volcengine/BytePlus Asset ID to an image file node. Used for Seedance face-reference (asset://<id> protocol). Pass empty string to clear.',
+			description: 'Bind a provider-specific Seedance Asset ID to an image file node. Used for face-reference asset://<id> protocol. Pass empty string to clear.',
 			inputSchema: {
 				nodeId: z.string(),
+				provider: z.enum(['tokenrouter', 'byteplus', 'bytedance']).optional().describe('Asset provider namespace. Defaults to tokenrouter.'),
 				assetId: z.string().describe('Asset ID like asset-20260403175316-... or "" to clear'),
 			},
-			handler: ({ nodeId, assetId }) => {
+			handler: ({ nodeId, provider, assetId }) => {
 				const canvas = requireCanvas(getCanvas)
 				const node = findNode(canvas, nodeId)
 				const d = node.getData() as BragiCanvasNodeData
-				if (d.type !== 'file' || !/\.(png|jpg|jpeg|webp|gif)$/i.test(d.file || '')) {
+				if (d.type !== 'file' || !/\.(png|jpg|jpeg|webp|bmp|tiff?|gif|heic|heif)$/i.test(d.file || '')) {
 					throw new Error('Asset ID only applies to image file nodes')
 				}
+				const providerId = (provider || 'tokenrouter') as SeedanceAssetProviderId
 				const next = { ...d }
-				if (assetId) next.bragiAssetId = assetId
-				else delete next.bragiAssetId
+				const ids = { ...(next.bragiAssetIds || {}) }
+				if (assetId) ids[providerId] = assetId
+				else delete ids[providerId]
+				if (Object.keys(ids).length > 0) next.bragiAssetIds = ids
+				else delete next.bragiAssetIds
 				node.setData(next)
 				void canvas.requestSave()
-				return ok({ nodeId, assetId: assetId || null })
+				return ok({ nodeId, provider: providerId, assetId: assetId || null })
 			},
 		},
 
