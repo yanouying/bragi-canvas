@@ -1149,10 +1149,11 @@ function reusableVoiceRecord(
 	sourceHash: string,
 ): CustomVoiceRecord | null {
 	return getCustomVoiceRecords(node).find(record =>
-		record.provider === activeProvider
+		record.kind === 'clone'
+		&& record.provider === activeProvider
 		&& record.region === region
 		&& record.modelId === modelId
-		&& (record.kind === 'design' || record.sourceHash === sourceHash)
+		&& record.sourceHash === sourceHash
 	) || null
 }
 
