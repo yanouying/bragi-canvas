@@ -9,21 +9,85 @@ import {
 } from './providers/token360-assets'
 
 const PROVIDER_KEY = 'token360'
-const IMAGE_EXTS = /\.(png|jpe?g|webp)$/i
-
 function imageExtToMime(ext: string): string {
 	if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg'
 	if (ext === 'webp') return 'image/webp'
 	return 'image/png'
 }
 
-function getImageFileInfo(filePath: string): { ext: string; mime: string; filename: string } {
-	const filename = filePath.split('/').pop() || 'ref.png'
-	const ext = (filename.split('.').pop() || '').toLowerCase()
-	if (!IMAGE_EXTS.test(filePath)) {
-		throw new Error(`Token360 assets support PNG, JPG, JPEG, or WebP images only: ${filename}`)
+function sniffImageExt(bytes: ArrayBuffer): 'png' | 'jpg' | 'webp' | null {
+	const b = new Uint8Array(bytes)
+	if (b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'png'
+	if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpg'
+	if (
+		b.length >= 12 &&
+		b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 &&
+		b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50
+	) return 'webp'
+	return null
+}
+
+function basenameWithoutExt(filename: string): string {
+	const index = filename.lastIndexOf('.')
+	return index > 0 ? filename.slice(0, index) : filename
+}
+
+function getImageFileInfo(filePath: string, bytes: ArrayBuffer): { ext: 'png' | 'jpg' | 'webp'; mime: string; filename: string } {
+	const originalName = filePath.split('/').pop() || 'ref'
+	const ext = sniffImageExt(bytes)
+	if (!ext) throw new Error(`Token360 assets support PNG, JPG, JPEG, or WebP images only: ${originalName}`)
+	return {
+		ext,
+		mime: imageExtToMime(ext),
+		filename: `${basenameWithoutExt(originalName)}.${ext}`,
 	}
-	return { ext: ext || 'png', mime: imageExtToMime(ext || 'png'), filename }
+}
+
+function convertImageToPng(bytes: ArrayBuffer, mime: string): Promise<ArrayBuffer> {
+	return new Promise((resolve, reject) => {
+		const url = URL.createObjectURL(new Blob([bytes], { type: mime }))
+		const image = new Image()
+		image.onload = () => {
+			const width = image.naturalWidth || image.width
+			const height = image.naturalHeight || image.height
+			URL.revokeObjectURL(url)
+			if (!width || !height) {
+				reject(new Error('Token360 asset upload: image has no dimensions'))
+				return
+			}
+			const canvas = createEl('canvas')
+			canvas.width = width
+			canvas.height = height
+			const ctx = canvas.getContext('2d')
+			if (!ctx) {
+				reject(new Error('Token360 asset upload: could not create image canvas'))
+				return
+			}
+			ctx.drawImage(image, 0, 0)
+			canvas.toBlob(blob => {
+				if (!blob) {
+					reject(new Error('Token360 asset upload: could not convert image to PNG'))
+					return
+				}
+				blob.arrayBuffer().then(resolve, reject)
+			}, 'image/png')
+		}
+		image.onerror = () => {
+			URL.revokeObjectURL(url)
+			reject(new Error('Token360 asset upload: could not decode image'))
+		}
+		image.src = url
+	})
+}
+
+async function prepareUploadImage(filePath: string, bytes: ArrayBuffer): Promise<{ bytes: ArrayBuffer; mime: string; filename: string }> {
+	const info = getImageFileInfo(filePath, bytes)
+	if (info.ext !== 'webp') return { bytes, mime: info.mime, filename: info.filename }
+	return {
+		bytes: await convertImageToPng(bytes, info.mime),
+		mime: 'image/png',
+		filename: `${basenameWithoutExt(info.filename)}.png`,
+	}
 }
 
 function findNodeByPath(canvas: Canvas, filePath: string): CanvasNode | null {
@@ -67,7 +131,8 @@ export async function ensureToken360Asset(
 	filePath: string,
 	creds: Token360AssetCreds,
 ): Promise<string> {
-	const { mime, filename } = getImageFileInfo(filePath)
+	const binary = await plugin.app.vault.adapter.readBinary(filePath)
+	const upload = await prepareUploadImage(filePath, binary)
 	const node = findNodeByPath(canvas, filePath)
 
 	if (node) {
@@ -82,10 +147,10 @@ export async function ensureToken360Asset(
 				}
 				clearCachedAssetId(node)
 				if (status === 'Rejected') {
-					throw new Error(`Reference image rejected by Token360 review: ${filename}`)
+					throw new Error(`Reference image rejected by Token360 review: ${upload.filename}`)
 				}
 				if (status === 'Inactive') {
-					throw new Error(`Reference image inactive in Token360: ${filename}`)
+					throw new Error(`Reference image inactive in Token360: ${upload.filename}`)
 				}
 			} catch (err: unknown) {
 				if (isToken360AssetNotFound(err)) {
@@ -97,8 +162,7 @@ export async function ensureToken360Asset(
 		}
 	}
 
-	const binary = await plugin.app.vault.adapter.readBinary(filePath)
-	const assetId = await uploadToken360Asset(creds, filename, mime, binary)
+	const assetId = await uploadToken360Asset(creds, upload.filename, upload.mime, upload.bytes)
 	await waitForToken360AssetActive(creds, assetId)
 	if (node) setCachedAssetId(node, assetId)
 	return `asset://${assetId}`

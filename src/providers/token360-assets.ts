@@ -70,8 +70,8 @@ function parseBody(resp: { text?: string; json?: unknown }): JsonRecord | null {
 function extractError(resp: { status: number; text?: string; json?: unknown }): string {
 	const body = parseBody(resp)
 	const error = asRecord(body?.error)
-	const msg = stringValue(error?.message || body?.message || body?.error || resp.text, `HTTP ${resp.status}`)
-	const code = stringValue(error?.code || error?.type || body?.code, '')
+	const msg = stringValue(error?.message || body?.msg || body?.message || body?.error || resp.text, `HTTP ${resp.status}`)
+	const code = stringValue(error?.code || error?.type || body?.serviceCode || body?.code, '')
 	return `${code ? code + ' - ' : ''}${msg}`
 }
 
@@ -79,6 +79,16 @@ function makeError(message: string, status?: number): Error & { status?: number;
 	const err = new Error(message) as Error & { status?: number; code?: string }
 	err.status = status
 	return err
+}
+
+function isSuccessCode(value: unknown): boolean {
+	return value === 0 || value === 200 || value === '0' || value === '200'
+}
+
+function hasApiError(body: JsonRecord): boolean {
+	if (body.success === false) return true
+	if ('code' in body) return !isSuccessCode(body.code)
+	return false
 }
 
 function normalizeStatus(value: unknown): Token360AssetGetResult['status'] {
@@ -128,11 +138,11 @@ export async function uploadToken360Asset(
 		body: concatBytes(parts),
 		throw: false,
 	})
-	if (resp.status < 200 || resp.status >= 300) {
+	const body = parseBody(resp) || {}
+	if (resp.status < 200 || resp.status >= 300 || hasApiError(body)) {
 		throw makeError(`Token360 Upload Asset: ${extractError(resp)}`, resp.status)
 	}
 
-	const body = parseBody(resp) || {}
 	const assetId = extractAssetId(body)
 	if (!assetId) throw new Error('Token360 Upload Asset: no assetId in response')
 	return assetId
@@ -145,11 +155,11 @@ export async function getToken360Asset(creds: Token360AssetCreds, assetId: strin
 		headers: { 'Authorization': `Bearer ${creds.apiKey}` },
 		throw: false,
 	})
-	if (resp.status < 200 || resp.status >= 300) {
+	const body = parseBody(resp) || {}
+	if (resp.status < 200 || resp.status >= 300 || hasApiError(body)) {
 		throw makeError(`Token360 Get Asset: ${extractError(resp)}`, resp.status)
 	}
 
-	const body = parseBody(resp) || {}
 	const nestedData = asRecord(body.data)
 	const result = asRecord(body.result) || asRecord(body.Result)
 	const source = nestedData || result || body
