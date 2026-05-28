@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.17.0
+
+- Refined the provider and model settings flow so provider credentials are only saved after selected models are connected.
+- Added explicit provider-model connection preferences and a centralized settings migration pipeline.
+- Updated Add Model, Manage Models, Remove Provider, MCP `list_models`, and the generate bar to respect connected provider-model pairs.
+- Polished model/provider settings empty states and row layouts.
+- Added an update reminder modal that checks the latest GitHub release when a canvas is opened or activated.
+- Added the `Bragi Canvas: Check for updates` command and update-check verification script.
+- Documented the update-check network request in the README.
+- Bumped the plugin version to `1.17.0`.
+
 ## 1.16.0
 
 - Added image collage composition for multi-selected image nodes, creating a new composed PNG node and source edges.
