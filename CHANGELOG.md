@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.19.1
+
+- Fixed canvas inline annotation mode regressions introduced by the new image annotation tool.
+- Improved inline tool session state handling, viewport focusing, toolbar suppression/reveal, and exit cleanup.
+- Fixed annotation toolbar interactions for color dropdowns, pointer/focus scope, and native toolbar restoration.
+- Adjusted node toolbar positioning and annotation CSS for the inline tool mode.
+- Bumped the plugin version to `1.19.1`.
+
 ## 1.19.0
 
 - Added APIMart Omni-Flash-Ext as a video model with text-to-video, first-frame, multi-image-ref, and video-ref modes.
