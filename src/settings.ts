@@ -109,6 +109,7 @@ export interface BragiSettings {
 		token360AssetGroupId: string
 		mulerouter: string
 		apimart: string
+		suchuang: string
 		lumaToken: string
 		xai: string
 		dashscope: string
@@ -174,6 +175,7 @@ export const DEFAULT_SETTINGS: BragiSettings = {
 		token360AssetGroupId: '',
 		mulerouter: '',
 		apimart: '',
+		suchuang: '',
 		lumaToken: '',
 		xai: '',
 		dashscope: '',

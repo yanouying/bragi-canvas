@@ -20,3 +20,14 @@ Use these checks when adding a built-in model/provider pairing:
 - Reference video count must be 0 or 1. When `video_urls` is present, omit `duration`.
 - Supported duration values are 4, 6, 8, and 10 seconds.
 - Supported resolution values are `720p`, `1080p`, and `4k`.
+
+## SuChuang Gemini Omni
+
+- Endpoint: `POST https://api.wuyinkeji.com/api/async/video_google_omni`.
+- Result status: `GET https://api.wuyinkeji.com/api/async/detail?id={task_id}`.
+- Send the API key as both `Authorization` and `key` query parameter because the provider docs show both auth paths.
+- Map Bragi `resolution` + `aspect_ratio` to SuChuang `size`: `1280x720` / `720x1280` for 720p, `1920x1080` / `1080x1920` for 1080p.
+- SuChuang does not document 4K output for this endpoint. Reject `4k` clearly instead of silently downscaling.
+- SuChuang reference images must be sent as Bragi temporary relay URLs in the comma-separated `images` field, capped at 7 images.
+- SuChuang does not support reference videos for this endpoint.
+- Treat status `0` / `1` as pending, `2` as success, and `3` as failure.
