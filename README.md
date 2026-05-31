@@ -60,7 +60,7 @@ Use the MCP server only for trusted local clients that you want to let read or m
 
 ## Providers
 
-Bragi Canvas supports multiple provider integrations, including OpenAI, Anthropic, AWS Bedrock, Google Gemini (Gemini, Imagen, and Veo), Volcengine, BytePlus, Kling, fal.ai, ElevenLabs, MiniMax, Legnext, TokenRouter (`https://api.tokenrouter.com/v1`), APIMart, xAI, and Luma. Availability depends on the models and credentials configured in plugin settings.
+Bragi Canvas supports multiple provider integrations, including OpenAI, Anthropic, AWS Bedrock, Google Gemini (Gemini, Imagen, and Veo), Volcengine, BytePlus, Kling, fal.ai, ElevenLabs, MiniMax, Legnext, TokenRouter (`https://api.tokenrouter.com/v1`), APIMart, SuChuang, xAI, and Luma. Availability depends on the models and credentials configured in plugin settings.
 
 Provider credentials are stored by Obsidian in this plugin's local settings data. They are used only to make the provider requests selected by the user.
 

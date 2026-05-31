@@ -2,6 +2,9 @@
 
 ## 1.19.1
 
+- Added SuChuang as an optional provider for the existing Omni-Flash-Ext video model.
+- Added SuChuang async task submission, result polling, Bragi Relay image reference routing, and defensive final URL extraction.
+- Kept APIMart Omni-Flash-Ext support unchanged, including reference video and 4K behavior.
 - Fixed canvas inline annotation mode regressions introduced by the new image annotation tool.
 - Improved inline tool session state handling, viewport focusing, toolbar suppression/reveal, and exit cleanup.
 - Fixed annotation toolbar interactions for color dropdowns, pointer/focus scope, and native toolbar restoration.

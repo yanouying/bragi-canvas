@@ -6,6 +6,7 @@ export const omniFlashExt: ModelConfig = {
 	type: 'video',
 	supportedProviders: {
 		apimart: { apiModelId: 'Omni-Flash-Ext' },
+		suchuang: { apiModelId: 'google_omni' },
 	},
 	modes: ['text-to-video', 'first-frame', 'multi-image-ref', 'video-ref'],
 	params: [

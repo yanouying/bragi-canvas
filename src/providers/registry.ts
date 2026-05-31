@@ -16,6 +16,7 @@ import { ElevenLabsProvider } from './elevenlabs'
 import { MiniMaxProvider } from './minimax'
 import { LegnextProvider } from './legnext'
 import { APIMartProvider } from './apimart'
+import { SuchuangVideoProvider, testSuchuangConnection } from './suchuang'
 import { LumaProvider } from './luma'
 import { MuleRouterImageProvider, MuleRouterVideoProvider, testMuleRouterConnection } from './mulerouter'
 import { XAIImageProvider, XAIVideoProvider, XAIAudioProvider } from './xai'
@@ -463,6 +464,17 @@ export const PROVIDERS: ProviderSpec[] = [
 		makeText: ({ settings }) =>
 			new APIMartTextProvider(settings.providers.apimart, 'https://api.apimart.ai/v1'),
 		testConnection: (d) => testListModels('https://api.apimart.ai/v1/models', d.apimart || ''),
+	},
+	{
+		id: 'suchuang',
+		name: 'SuChuang',
+		description: 'Gemini Omni video gateway.',
+		docUrl: 'https://api.wuyinkeji.com/doc/72',
+		fields: [{ key: 'suchuang', label: 'API Key', placeholder: 'API key', type: 'password' }],
+		isConfigured: (s) => !!s.providers.suchuang,
+		makeVideo: ({ settings, app, outputDir }) =>
+			new SuchuangVideoProvider(settings.providers.suchuang, app, outputDir),
+		testConnection: (d) => testSuchuangConnection(d.suchuang || ''),
 	},
 	{
 		id: 'xai',
