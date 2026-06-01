@@ -742,14 +742,13 @@
 
 .bragi-canvas-menu.bragi-inline-tool-menu-inline,
 .bragi-canvas-menu.bragi-annotation-menu-inline {
-	position: fixed !important;
-	top: var(--bragi-inline-tool-toolbar-top, 64px) !important;
-	left: 50% !important;
+	/* Node-relative: left/top are set in JS by positionNodeToolbar so the toolbar
+	   hugs the node a fixed gap above it, centered on the node. */
+	position: absolute !important;
 	right: auto !important;
 	bottom: auto !important;
 	gap: 1px;
 	padding: var(--size-2-1);
-	transform: translateX(-50%) !important;
 	z-index: 1000 !important;
 }
 
@@ -773,7 +772,16 @@
 }
 
 .bragi-canvas-menu .bragi-annotation-save {
-	padding: 8px 12px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	/* Stretch to the row's content height so the solid block matches the sibling
+	   icon buttons — removes the uneven top/bottom gap that a fixed height left. */
+	align-self: stretch;
+	/* Extra breathing room on the left: a solid-fill button needs more separation
+	   from its neighbor than the toolbar's 1px gap gives transparent icon buttons. */
+	margin-inline-start: 5px;
+	padding: 0 12px;
 	border: 0;
 	border-radius: 6px;
 	background: var(--bragi-accent);
@@ -782,8 +790,6 @@
 	line-height: 1;
 	box-shadow: none;
 	outline: 0;
-	height: auto;
-	align-self: center;
 	transition: opacity 0.15s ease, background-color 0.15s ease;
 }
 
@@ -842,7 +848,7 @@ body.bragi-inline-tool-active .bragi-canvas-menu.bragi-inline-tool-menu-inline,
 body.bragi-annotation-mode-active .bragi-canvas-menu.bragi-annotation-menu-inline {
 	opacity: 1;
 	visibility: visible;
-	transform: translateX(-50%) translateY(0) !important;
+	transform: translateY(0) !important;
 	pointer-events: auto;
 	z-index: 1000 !important;
 	transition: opacity 140ms ease, transform 140ms ease, visibility 0s linear 0s;
@@ -854,7 +860,7 @@ body.bragi-inline-tool-active .bragi-canvas-menu.bragi-inline-tool-toolbar-hidde
 body.bragi-annotation-mode-active .bragi-canvas-menu.bragi-annotation-toolbar-hidden {
 	opacity: 0;
 	visibility: hidden;
-	transform: translateX(-50%) translateY(-4px) !important;
+	transform: translateY(-4px) !important;
 	pointer-events: none;
 	transition: opacity 120ms ease, transform 120ms ease, visibility 0s linear 120ms;
 }
@@ -2797,6 +2803,26 @@ body.bragi-annotation-mode-active .bragi-canvas-menu.bragi-annotation-toolbar-hi
 }
 
 
+/* ── Inline tool: framework-owned bottom toolbar ───────────────────────── */
+.bragi-inline-tool-bottom-bar {
+	/* Node-relative: left/top set in JS by positionNodeToolbar so the bar hugs
+	   the node a fixed gap below it, centered on the node. */
+	position: absolute;
+	z-index: 50;
+	pointer-events: auto;
+	transition: opacity 140ms ease, transform 140ms ease, visibility 0s linear 0s;
+}
+
+.bragi-inline-tool-bottom-bar.bragi-inline-tool-bottom-bar-hidden {
+	opacity: 0;
+	/* visibility:hidden (NOT display:none) keeps the bar measurable for the
+	   safe-rect fit while the open zoom animation runs. */
+	visibility: hidden;
+	transform: translateY(4px);
+	pointer-events: none;
+	transition: opacity 120ms ease, transform 120ms ease, visibility 0s linear 120ms;
+}
+
 /* ── Inline video editor: bottom toolbar ───────────────────────────────── */
 .bragi-video-edit-offscreen {
 	position: fixed;
@@ -2809,10 +2835,6 @@ body.bragi-annotation-mode-active .bragi-canvas-menu.bragi-annotation-toolbar-hi
 }
 
 .bragi-video-edit-bar {
-	position: absolute;
-	bottom: 24px;
-	left: 50%;
-	transform: translateX(-50%);
 	display: flex;
 	align-items: center;
 	/* Match the top toolbars' compact spacing model: tight container (4px padding, 1px gap),
@@ -2857,13 +2879,44 @@ body.bragi-annotation-mode-active .bragi-canvas-menu.bragi-annotation-toolbar-hi
 	height: 20px;
 }
 
-.bragi-video-edit-sep {
-	width: 1px;
+/* Capture buttons in the top toolbar (current / first / last frame). */
+.bragi-video-edit-capture .svg-icon {
+	width: 20px;
 	height: 20px;
-	margin: 0 var(--size-2-1);
-	background: var(--bragi-border);
-	flex-shrink: 0;
-	align-self: center;
+}
+
+/* Save button in the top toolbar — matches the annotation Save button. */
+.bragi-canvas-menu .bragi-video-edit-save {
+	/* Stretch to the row's content height so the solid block matches the sibling
+	   icon buttons — removes the uneven top/bottom gap that a fixed height left. */
+	align-self: stretch;
+	/* Extra breathing room on the left: a solid-fill button needs more separation
+	   from its neighbor than the toolbar's 1px gap gives transparent icon buttons. */
+	margin-inline-start: 5px;
+	padding: 0 12px;
+	border: 0;
+	border-radius: 6px;
+	background: var(--bragi-accent);
+	color: var(--bragi-accent-text);
+	font-size: 12px;
+	line-height: 1;
+	box-shadow: none;
+	outline: 0;
+	transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.bragi-canvas-menu .bragi-video-edit-save:hover,
+.bragi-canvas-menu .bragi-video-edit-save:focus-visible,
+.bragi-canvas-menu .bragi-video-edit-save:active {
+	background: var(--bragi-accent-hover);
+	color: var(--bragi-accent-text);
+	border: 0;
+	box-shadow: none;
+	outline: 0;
+}
+
+.bragi-canvas-menu .bragi-video-edit-save .bragi-menu-button-label {
+	color: var(--bragi-accent-text);
 }
 
 .bragi-video-edit-timeline {
@@ -2970,59 +3023,8 @@ body.bragi-annotation-mode-active .bragi-canvas-menu.bragi-annotation-toolbar-hi
 	text-align: center;
 	font-size: 12px;
 	font-variant-numeric: tabular-nums;
-	color: var(--bragi-text-muted);
+	color: var(--bragi-text);
 	flex-shrink: 0;
-}
-
-/* Camera button: camera glyph + a small caret hinting at the capture dropdown. */
-.bragi-video-edit-camera {
-	width: auto;
-	gap: 1px;
-	padding-inline: 5px;
-}
-
-.bragi-video-edit-camera-icon {
-	display: inline-flex;
-}
-
-.bragi-video-edit-camera-icon .svg-icon {
-	width: 20px;
-	height: 20px;
-}
-
-.bragi-video-edit-camera-caret {
-	display: inline-flex;
-	color: var(--bragi-text-muted);
-}
-
-.bragi-video-edit-camera-caret .svg-icon {
-	width: 12px;
-	height: 12px;
-}
-
-.bragi-video-edit-export {
-	display: flex;
-	align-items: center;
-	/* Match the annotation Save button exactly. */
-	padding: 8px 12px;
-	border-radius: 6px;
-	background: var(--bragi-accent);
-	color: var(--bragi-accent-text);
-	font-size: 12px;
-	line-height: 1;
-	cursor: pointer;
-	flex-shrink: 0;
-	align-self: center;
-	transition: background-color 0.12s ease;
-}
-
-.bragi-video-edit-export:hover {
-	background: var(--bragi-accent-hover);
-}
-
-.bragi-video-edit-export .svg-icon {
-	width: 16px;
-	height: 16px;
 }
 
 

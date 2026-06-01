@@ -69,7 +69,7 @@ function setInstantTopTooltip(el: HTMLElement, text: string): void {
 
 function isVideoEditEventTarget(target: EventTarget | null): boolean {
 	if (!(target instanceof HTMLElement)) return false
-	return Boolean(target.closest('.bragi-video-edit-bar, .bragi-video-edit-dropdown, .bragi-canvas-menu'))
+	return Boolean(target.closest('.bragi-video-edit-bar, .bragi-canvas-menu'))
 }
 
 /** Resolve {@link currentTime} on a video element, settling on the `seeked` event (with a timeout guard). */
@@ -120,11 +120,7 @@ class VideoEditMode {
 	private outHandleEl: HTMLElement | null = null
 	private playheadEl: HTMLElement | null = null
 	private playBtn: HTMLElement | null = null
-	private cameraBtn: HTMLElement | null = null
 	private durationLabel: HTMLElement | null = null
-
-	private dropdownEl: HTMLElement | null = null
-	private dropdownOutsideHandler: ((event: PointerEvent) => void) | null = null
 
 	private playing = false
 	private rafId: number | null = null
@@ -162,11 +158,11 @@ class VideoEditMode {
 			actionEvent: VIDEO_EDIT_ACTION_EVENT,
 			renderToolbar: (menuEl, context) => this.renderToolbar(menuEl, context),
 			onAction: action => this.handleAction(action),
-			mountLayer: () => this.buildBar(),
+			bottomToolbar: { className: 'bragi-video-edit-bar', render: bar => this.buildBar(bar) },
 			isToolEventTarget: isVideoEditEventTarget,
 			onKeyDown: event => this.handleKeyDown(event),
 			onClose: () => this.cleanup(),
-			focusOptions: { maxZoom: 1, bottomMarginPx: 160 },
+			focusOptions: { maxZoom: 1 },
 		})
 		this.session.open()
 		this.setupPreviewVideo()
@@ -212,7 +208,7 @@ class VideoEditMode {
 		})
 	}
 
-	// ── Top toolbar (Exit only) ────────────────────────────────────────────
+	// ── Top toolbar (Exit | capture frames | Save) ─────────────────────────
 	private renderToolbar(menuEl: HTMLElement, context: CanvasInlineToolContext<VideoEditAction>): void {
 		const exitBtn = createDiv()
 		exitBtn.className = 'clickable-icon bragi-video-edit-exit bragi-labeled-menu-button bragi-menu-injected'
@@ -225,6 +221,43 @@ class VideoEditMode {
 			context.dispatchAction({ type: 'exit' })
 		})
 		menuEl.appendChild(exitBtn)
+
+		menuEl.createDiv({ cls: 'bragi-annotation-separator bragi-menu-injected' })
+
+		// Capture buttons, mapped out from the old dropdown: current / first / last frame.
+		menuEl.appendChild(this.createCaptureButton('bragi-video-capture', 'Capture current frame', () => {
+			void this.captureFrame(this.currentPreviewTime())
+		}))
+		menuEl.appendChild(this.createCaptureButton('bragi-video-capture-first', 'Capture first frame', () => {
+			void this.captureFrame(0)
+		}))
+		menuEl.appendChild(this.createCaptureButton('bragi-video-capture-last', 'Capture last frame', () => {
+			void this.captureFrame(Math.max(0, this.duration - 0.04))
+		}))
+
+		const saveBtn = createDiv()
+		saveBtn.className = 'clickable-icon bragi-video-edit-save bragi-labeled-menu-button bragi-menu-injected'
+		saveBtn.setAttribute('aria-label', 'Save')
+		setInstantTopTooltip(saveBtn, 'Save the selected segment as a new clip')
+		saveBtn.createSpan({ cls: 'bragi-menu-button-label', text: 'Save' })
+		saveBtn.addEventListener('click', (event) => {
+			event.stopPropagation()
+			void this.exportClip()
+		})
+		menuEl.appendChild(saveBtn)
+	}
+
+	private createCaptureButton(icon: string, tooltip: string, onClick: () => void): HTMLElement {
+		const btn = createDiv()
+		btn.className = 'clickable-icon bragi-video-edit-capture bragi-menu-injected'
+		setIcon(btn, icon)
+		btn.setAttribute('aria-label', tooltip)
+		setInstantTopTooltip(btn, tooltip)
+		btn.addEventListener('click', (event) => {
+			event.stopPropagation()
+			onClick()
+		})
+		return btn
 	}
 
 	private handleAction(action: VideoEditAction): void {
@@ -246,11 +279,7 @@ class VideoEditMode {
 	}
 
 	// ── Bottom toolbar ─────────────────────────────────────────────────────
-	private buildBar(): void {
-		const bar = createDiv({ cls: 'bragi-video-edit-bar' })
-		bar.addEventListener('pointerdown', event => event.stopPropagation())
-		bar.addEventListener('click', event => event.stopPropagation())
-
+	private buildBar(bar: HTMLElement): void {
 		this.playBtn = bar.createDiv({ cls: 'bragi-video-edit-btn bragi-video-edit-play' })
 		setIcon(this.playBtn, 'bragi-video-play')
 		setInstantTopTooltip(this.playBtn, 'Play / pause')
@@ -274,31 +303,9 @@ class VideoEditMode {
 
 		this.durationLabel = bar.createDiv({ cls: 'bragi-video-edit-duration' })
 
-		bar.createDiv({ cls: 'bragi-video-edit-sep' })
-
-		// Camera button opens a menu: capture the current / first / last frame. The button shows
-		// a camera glyph plus a small caret hinting at the dropdown.
-		this.cameraBtn = bar.createDiv({ cls: 'bragi-video-edit-btn bragi-video-edit-camera' })
-		const cameraIcon = this.cameraBtn.createSpan({ cls: 'bragi-video-edit-camera-icon' })
-		setIcon(cameraIcon, 'bragi-video-capture')
-		const cameraCaret = this.cameraBtn.createSpan({ cls: 'bragi-video-edit-camera-caret' })
-		setIcon(cameraCaret, 'bragi-caret-down')
-		setInstantTopTooltip(this.cameraBtn, 'Capture frame')
-		this.cameraBtn.addEventListener('click', (event) => {
-			event.stopPropagation()
-			this.toggleFrameDropdown(this.cameraBtn as HTMLElement)
-		})
-
-		const exportBtn = bar.createDiv({ cls: 'bragi-video-edit-export' })
-		exportBtn.createSpan({ cls: 'bragi-video-edit-export-label', text: 'Save' })
-		setInstantTopTooltip(exportBtn, 'Save the selected segment as a new clip')
-		exportBtn.addEventListener('click', () => { void this.exportClip() })
-
-		// Mount inside the canvas wrapper (not document.body) so the bar centers within the
-		// canvas pane — matching the top Exit toolbar — instead of the whole window when a
-		// sidebar is open.
-		const host = this.sourceCanvas.wrapperEl ?? activeDocument.body
-		host.appendChild(bar)
+		// Capture and Save now live in the top toolbar (see renderToolbar).
+		// The framework owns the bar element: it mounts it inside the canvas wrapper,
+		// positions it node-relative, and removes it on close.
 		this.barEl = bar
 		this.renderSelection()
 		this.updateTimeLabel(this.currentPreviewTime())
@@ -480,55 +487,6 @@ class VideoEditMode {
 			window.cancelAnimationFrame(this.rafId)
 			this.rafId = null
 		}
-	}
-
-	// ── First / last frame dropdown ────────────────────────────────────────
-	private toggleFrameDropdown(anchor: HTMLElement): void {
-		if (this.dropdownEl) {
-			this.closeDropdown()
-			return
-		}
-		const anchorRect = anchor.getBoundingClientRect()
-		const dropdown = createDiv({ cls: 'bragi-more-dropdown bragi-video-edit-dropdown' })
-		dropdown.style.left = `${anchorRect.left}px`
-		// The bar sits near the bottom of the viewport, so open the menu upward.
-		dropdown.style.bottom = `${activeDocument.documentElement.clientHeight - anchorRect.top + 6}px`
-
-		const addItem = (label: string, onClick: () => void): void => {
-			const item = dropdown.createDiv({ cls: 'bragi-more-dropdown-item' })
-			item.createDiv({ cls: 'bragi-more-dropdown-label', text: label })
-			item.addEventListener('click', (event) => {
-				event.stopPropagation()
-				this.closeDropdown()
-				onClick()
-			})
-		}
-		addItem('Capture current frame', () => { void this.captureFrame(this.currentPreviewTime()) })
-		addItem('Capture first frame', () => { void this.captureFrame(0) })
-		addItem('Capture last frame', () => { void this.captureFrame(Math.max(0, this.duration - 0.04)) })
-
-		dropdown.addEventListener('pointerdown', event => event.stopPropagation())
-		activeDocument.body.appendChild(dropdown)
-		this.dropdownEl = dropdown
-
-		const outside = (event: PointerEvent): void => {
-			const target = event.target as Node | null
-			if (target && (dropdown.contains(target) || anchor.contains(target))) return
-			this.closeDropdown()
-		}
-		this.dropdownOutsideHandler = outside
-		window.setTimeout(() => {
-			if (this.dropdownOutsideHandler === outside) activeDocument.addEventListener('pointerdown', outside, true)
-		}, 0)
-	}
-
-	private closeDropdown(): void {
-		if (this.dropdownOutsideHandler) {
-			activeDocument.removeEventListener('pointerdown', this.dropdownOutsideHandler, true)
-			this.dropdownOutsideHandler = null
-		}
-		this.dropdownEl?.remove()
-		this.dropdownEl = null
 	}
 
 	// ── Thumbnails ─────────────────────────────────────────────────────────
@@ -750,7 +708,6 @@ class VideoEditMode {
 	private cleanup(): void {
 		this.stopPlayheadLoop()
 		this.playing = false
-		this.closeDropdown()
 
 		const preview = this.previewVideo
 		if (preview) {
@@ -778,7 +735,7 @@ class VideoEditMode {
 			this.objectUrl = null
 		}
 
-		this.barEl?.remove()
+		// The framework owns the bottom bar element and removes it on close.
 		this.barEl = null
 	}
 }
