@@ -80,7 +80,7 @@ async function getFileSize(app: App, node: MediaNodeInternals, filePath: string)
 	}
 }
 
-function findMediaElement(node: CanvasNode, kind: MediaKind): HTMLImageElement | HTMLVideoElement | null {
+export function findMediaElement(node: CanvasNode, kind: MediaKind): HTMLImageElement | HTMLVideoElement | null {
 	const root = node.contentEl || node.containerEl || node.nodeEl
 	if (!root) return null
 	if (kind === 'image') return root.querySelector('img')

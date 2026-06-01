@@ -25,6 +25,7 @@ import { BragiMcpServer } from './mcp-server'
 import { checkMigration } from './migrate-assets'
 import { startAttachmentRedirect } from './attachment-redirect'
 import { openImageAnnotationTool } from './image-annotations'
+import { openVideoEditTool } from './video-edit'
 import { ensureBytePlusAsset, getBytePlusAssetCreds } from './byteplus-asset-flow'
 import { ensureTokenRouterModelArkAsset, getTokenRouterModelArkCreds } from './tokenrouter-asset-flow'
 import { ensureToken360Asset, getToken360AssetCreds } from './token360-asset-flow'
@@ -373,6 +374,7 @@ export default class BragiCanvas extends Plugin {
 				new Notice(`Collage failed: ${err.message || err}`)
 			}),
 			(node, activeCanvas) => openImageAnnotationTool(this, activeCanvas, node, 'box'),
+			(node, activeCanvas) => openVideoEditTool(this, activeCanvas, node),
 		)
 
 		patchPlaceholderContextMenu(canvas)
