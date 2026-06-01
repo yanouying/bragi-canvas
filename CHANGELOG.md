@@ -1,10 +1,17 @@
 # Changelog
 
+## 1.20.0
+
+- Added MuleRouter CarrotHub image models: `z-image-spicy` for text-to-image and `qwen-image-edit-spicy` for image-ref-to-image.
+- Added SuChuang as an optional provider for the existing `omni-flash-ext` video model, including async task submission, polling, Relay image reference routing, and final URL extraction.
+- Added an inline video editing tool for trimming video nodes and capturing frames back onto the canvas.
+- Improved inline tool layout with node-relative top and bottom toolbars, moving video capture and save controls into the top toolbar.
+- Fixed MCP tool schemas so `inputSchema` is emitted with a top-level `type: object`.
+- Added verification scripts for MuleRouter CarrotHub image models and SuChuang Gemini Omni.
+- Bumped the plugin version to `1.20.0`.
+
 ## 1.19.1
 
-- Added SuChuang as an optional provider for the existing Omni-Flash-Ext video model.
-- Added SuChuang async task submission, result polling, Bragi Relay image reference routing, and defensive final URL extraction.
-- Kept APIMart Omni-Flash-Ext support unchanged, including reference video and 4K behavior.
 - Fixed canvas inline annotation mode regressions introduced by the new image annotation tool.
 - Improved inline tool session state handling, viewport focusing, toolbar suppression/reveal, and exit cleanup.
 - Fixed annotation toolbar interactions for color dropdowns, pointer/focus scope, and native toolbar restoration.
