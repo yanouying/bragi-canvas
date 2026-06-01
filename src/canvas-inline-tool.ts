@@ -1,4 +1,5 @@
 import type { Canvas, CanvasNode } from './types/canvas-internal'
+import { getSelectionBounds, positionNodeToolbar, NODE_TOOLBAR_GAP } from './node-toolbar-position'
 
 export type CanvasInlineToolToolbarPhase = 'hidden' | 'ready'
 export type CanvasInlineToolSessionState = 'opening' | 'active' | 'closing' | 'closed'
@@ -19,8 +20,22 @@ export type CanvasInlineToolContext<TAction> = {
 	readonly toolbarPhase: CanvasInlineToolToolbarPhase
 	setToolbarPhase(phase: CanvasInlineToolToolbarPhase): void
 	refreshToolbar(force?: boolean): void
+	repositionToolbars(): void
 	close(): void
 	dispatchAction(action: TAction): void
+}
+
+/**
+ * A bottom toolbar mounted by the framework as a node-relative, framework-owned
+ * element. Mirrors the top toolbar (which reuses the native selection menu) but
+ * lives as a custom div positioned a fixed gap below the node — matching the
+ * generate bar's positioning model (see node-toolbar-position.ts).
+ */
+export type CanvasInlineToolBottomToolbar<TAction> = {
+	/** Populate the framework-owned bottom bar element. Called once at mount. */
+	render: (barEl: HTMLElement, context: CanvasInlineToolContext<TAction>) => void
+	/** Optional extra class on the bar element (e.g. 'bragi-video-edit-bar'). */
+	className?: string
 }
 
 export type CanvasInlineToolSessionOptions<TAction> = {
@@ -28,7 +43,8 @@ export type CanvasInlineToolSessionOptions<TAction> = {
 	canvas: Canvas
 	node: CanvasNode
 	actionEvent: string
-	renderToolbar: (menuEl: HTMLElement, context: CanvasInlineToolContext<TAction>) => void
+	renderToolbar?: (menuEl: HTMLElement, context: CanvasInlineToolContext<TAction>) => void
+	bottomToolbar?: CanvasInlineToolBottomToolbar<TAction>
 	onAction: (action: TAction, context: CanvasInlineToolContext<TAction>) => void
 	mountLayer?: (context: CanvasInlineToolContext<TAction>) => void
 	isToolEventTarget?: (target: EventTarget | null) => boolean
@@ -92,7 +108,6 @@ const DEFAULT_INLINE_TOOL_MAX_ZOOM = 1
 const MIN_INLINE_TOOL_ZOOM = 0.1
 const DEFAULT_INLINE_TOOL_SIDE_MARGIN_PX = 32
 const DEFAULT_INLINE_TOOL_TOOLBAR_HEIGHT_PX = 44
-const INLINE_TOOL_TOOLBAR_GAP_PX = 24
 const INLINE_TOOL_TOOLBAR_TOP_GAP_PX = 12
 const INLINE_TOOL_BOTTOM_GAP_PX = 32
 const INLINE_TOOL_RENDERED_FIT_PADDING_PX = 12
@@ -343,15 +358,6 @@ function measureInlineToolbarHeight(canvas: Canvas): number {
 		|| DEFAULT_INLINE_TOOL_TOOLBAR_HEIGHT_PX
 }
 
-function measureInlineToolbarBottom(canvas: Canvas, wrapper: HTMLElement): number {
-	const toolbarEl = getInlineToolbarEl(canvas)
-	if (toolbarEl) {
-		const rect = toolbarEl.getBoundingClientRect()
-		if (rect.width > 0 && rect.height > 0 && Number.isFinite(rect.bottom)) return rect.bottom
-	}
-	return calculateToolbarTop(wrapper) + measureInlineToolbarHeight(canvas)
-}
-
 function measureTopChromeOverlap(wrapper: HTMLElement): number {
 	const wrapperRect = wrapper.getBoundingClientRect()
 	let overlap = 0
@@ -379,36 +385,33 @@ function measureBottomChromeTop(wrapper: HTMLElement, visibleRect: ScreenRect): 
 	return chromeTop
 }
 
-function calculateToolbarTop(wrapper: HTMLElement): number {
+/**
+ * Vertical space (in screen px) that each toolbar needs OUTSIDE the node: the
+ * toolbar's own measured height plus the node gap. The safe rect reserves this
+ * above (top toolbar) and below (bottom toolbar) so both bars sit a fixed gap
+ * from the node and stay on-screen — replacing the old viewport-top pin and the
+ * video-edit `bottomMarginPx` magic number.
+ */
+type ToolbarMetrics = {
+	topReserve: number
+	bottomReserve: number
+}
+
+function calculateSafeScreenRect(
+	wrapper: HTMLElement,
+	focusOptions: CanvasInlineToolFocusOptions | undefined,
+	metrics: ToolbarMetrics,
+): ScreenRect {
 	const visibleRect = getVisibleViewportRect(wrapper)
-	return Math.max(
-		INLINE_TOOL_TOOLBAR_TOP_GAP_PX,
-		visibleRect.top + measureTopChromeOverlap(wrapper) + INLINE_TOOL_TOOLBAR_TOP_GAP_PX,
-	)
-}
-
-function setInlineToolbarTop(wrapper: HTMLElement): void {
-	const top = `${Math.round(calculateToolbarTop(wrapper))}px`
-	wrapper.setCssProps({ '--bragi-inline-tool-toolbar-top': top })
-	activeDocument.body.setCssProps({ '--bragi-inline-tool-toolbar-top': top })
-}
-
-function clearInlineToolbarTop(wrapper: HTMLElement | null): void {
-	wrapper?.style.removeProperty('--bragi-inline-tool-toolbar-top')
-	activeDocument.body.style.removeProperty('--bragi-inline-tool-toolbar-top')
-}
-
-function calculateSafeScreenRect(canvas: Canvas, wrapper: HTMLElement, focusOptions: CanvasInlineToolFocusOptions | undefined): ScreenRect {
-	const visibleRect = getVisibleViewportRect(wrapper)
-	const toolbarBottom = measureInlineToolbarBottom(canvas, wrapper)
 	const sideMargin = finiteNumber(focusOptions?.sideMarginPx, DEFAULT_INLINE_TOOL_SIDE_MARGIN_PX)
 	const bottomChromeTop = measureBottomChromeTop(wrapper, visibleRect)
+	const topChromeOverlap = measureTopChromeOverlap(wrapper)
 	const top = focusOptions?.topMarginPx !== undefined
 		? visibleRect.top + focusOptions.topMarginPx
-		: toolbarBottom + INLINE_TOOL_TOOLBAR_GAP_PX
+		: visibleRect.top + topChromeOverlap + INLINE_TOOL_TOOLBAR_TOP_GAP_PX + metrics.topReserve
 	const viewportBottom = focusOptions?.bottomMarginPx !== undefined
 		? visibleRect.bottom - focusOptions.bottomMarginPx
-		: visibleRect.bottom - INLINE_TOOL_BOTTOM_GAP_PX
+		: visibleRect.bottom - INLINE_TOOL_BOTTOM_GAP_PX - metrics.bottomReserve
 	const bottom = Math.min(viewportBottom, bottomChromeTop - INLINE_TOOL_BOTTOM_GAP_PX)
 	const left = visibleRect.left + sideMargin
 	const right = visibleRect.right - sideMargin
@@ -425,10 +428,11 @@ function calculateFocusTarget(
 	node: CanvasNode,
 	wrapper: HTMLElement,
 	focusOptions: CanvasInlineToolFocusOptions | undefined,
+	metrics: ToolbarMetrics,
 ): CanvasViewportTarget {
 	const bbox = getNodeBBox(node)
 	const wrapperRect = wrapper.getBoundingClientRect()
-	const safeRect = calculateSafeScreenRect(canvas, wrapper, focusOptions)
+	const safeRect = calculateSafeScreenRect(wrapper, focusOptions, metrics)
 	const current = readViewport(canvas)
 	const maxZoom = finiteNumber(focusOptions?.maxZoom, DEFAULT_INLINE_TOOL_MAX_ZOOM)
 	const maxScale = zoomToScale(maxZoom, current)
@@ -502,13 +506,14 @@ function calculateRenderedCorrectionTarget(
 	node: CanvasNode,
 	wrapper: HTMLElement,
 	focusOptions: CanvasInlineToolFocusOptions | undefined,
+	metrics: ToolbarMetrics,
 ): CanvasViewportTarget | null {
 	const current = readViewport(canvas)
 	if (!current) return null
 	const contentRect = node.contentEl.getBoundingClientRect()
 	const nodeRect = contentRect.width > 0 && contentRect.height > 0 ? contentRect : node.nodeEl.getBoundingClientRect()
 	if (nodeRect.width <= 0 || nodeRect.height <= 0) return null
-	const safeRect = calculateSafeScreenRect(canvas, wrapper, focusOptions)
+	const safeRect = calculateSafeScreenRect(wrapper, focusOptions, metrics)
 	const maxZoom = finiteNumber(focusOptions?.maxZoom, DEFAULT_INLINE_TOOL_MAX_ZOOM)
 	const maxScale = zoomToScale(maxZoom, current)
 	const paddedSafeWidth = Math.max(1, safeRect.width - INLINE_TOOL_RENDERED_FIT_PADDING_PX * 2)
@@ -552,6 +557,8 @@ export class CanvasInlineToolSession<TAction> {
 	private toolbarPhase: CanvasInlineToolToolbarPhase = 'hidden'
 	private sessionState: CanvasInlineToolSessionState = 'closed'
 	private keyboardScopeActive = false
+	private bottomBarEl: HTMLElement | null = null
+	private positionRAF: number | null = null
 
 	constructor(private readonly options: CanvasInlineToolSessionOptions<TAction>) {}
 
@@ -612,6 +619,7 @@ export class CanvasInlineToolSession<TAction> {
 
 		const context = this.createContext()
 		this.options.mountLayer?.(context)
+		this.mountBottomToolbar(context)
 		this.options.canvas.selectOnly(this.options.node, false)
 		this.refreshToolbar()
 		const target = this.focusTargetNode()
@@ -619,9 +627,29 @@ export class CanvasInlineToolSession<TAction> {
 		void this.showToolbarAfterFocus(target)
 	}
 
+	private mountBottomToolbar(context: CanvasInlineToolContext<TAction>): void {
+		const bottomToolbar = this.options.bottomToolbar
+		const wrapper = this.wrapperEl
+		if (!bottomToolbar || !wrapper) return
+		const bar = createDiv({ cls: 'bragi-inline-tool-bottom-bar' })
+		if (bottomToolbar.className) bar.classList.add(bottomToolbar.className)
+		// Start hidden (visibility:hidden, NOT display:none) so it can still be measured
+		// for the safe-rect fit while the open zoom animation runs.
+		bar.classList.add('bragi-inline-tool-bottom-bar-hidden')
+		bar.dataset.bragiInlineToolId = this.options.id
+		bar.dataset.bragiInlineToolSessionId = this.sessionId
+		bar.dataset.bragiInlineToolNodeId = this.options.node.id
+		bar.addEventListener('pointerdown', event => event.stopPropagation())
+		bar.addEventListener('click', event => event.stopPropagation())
+		wrapper.appendChild(bar)
+		this.bottomBarEl = bar
+		bottomToolbar.render(bar, context)
+	}
+
 	close(): void {
 		if (this.sessionState === 'closing' || this.sessionState === 'closed') return
 		this.sessionState = 'closing'
+		this.stopPositionLoop()
 		this.suppressNativeToolbar()
 		clearActiveInlineToolSession(this.wrapperEl, this)
 		this.setToolbarPhase('hidden')
@@ -636,6 +664,7 @@ export class CanvasInlineToolSession<TAction> {
 	}
 
 	renderToolbar(menuEl: HTMLElement): void {
+		if (!this.options.renderToolbar) return
 		this.tagToolbarMenu(menuEl)
 		this.options.renderToolbar(menuEl, this.createContext())
 	}
@@ -669,6 +698,9 @@ export class CanvasInlineToolSession<TAction> {
 	setToolbarPhase(phase: CanvasInlineToolToolbarPhase): void {
 		this.toolbarPhase = phase
 		this.syncDataset()
+		if (this.bottomBarEl) {
+			this.bottomBarEl.classList.toggle('bragi-inline-tool-bottom-bar-hidden', phase !== 'ready')
+		}
 	}
 
 	refreshToolbar(force = false): void {
@@ -677,6 +709,48 @@ export class CanvasInlineToolSession<TAction> {
 			;(this.options.canvas as CanvasViewportInternals).menu?.render?.(true)
 		} catch (err) {
 			console.debug('Bragi inline tool: selection toolbar refresh skipped', err)
+		}
+		this.requestReposition()
+	}
+
+	/** Re-position both toolbars relative to the node, debounced through rAF. */
+	requestReposition(): void {
+		if (this.positionRAF !== null) return
+		this.positionRAF = window.requestAnimationFrame(() => {
+			this.positionRAF = null
+			this.repositionToolbars()
+		})
+	}
+
+	private repositionToolbars(): void {
+		if (!this.isActive()) return
+		const bounds = getSelectionBounds([this.options.node])
+		if (!bounds) return
+		const topEl = getInlineToolbarEl(this.options.canvas)
+		if (topEl) positionNodeToolbar(topEl, bounds, { placement: 'above' })
+		if (this.bottomBarEl) {
+			positionNodeToolbar(this.bottomBarEl, bounds, { placement: 'below' })
+		}
+	}
+
+	/** Continuously track the node so the toolbars follow pan/zoom/resize. */
+	private startPositionLoop(): void {
+		const tick = (): void => {
+			if (!this.isActive()) {
+				this.positionRAF = null
+				return
+			}
+			this.repositionToolbars()
+			this.positionRAF = window.requestAnimationFrame(tick)
+		}
+		if (this.positionRAF !== null) window.cancelAnimationFrame(this.positionRAF)
+		this.positionRAF = window.requestAnimationFrame(tick)
+	}
+
+	private stopPositionLoop(): void {
+		if (this.positionRAF !== null) {
+			window.cancelAnimationFrame(this.positionRAF)
+			this.positionRAF = null
 		}
 	}
 
@@ -695,6 +769,7 @@ export class CanvasInlineToolSession<TAction> {
 			toolbarPhase: this.toolbarPhase,
 			setToolbarPhase: phase => this.setToolbarPhase(phase),
 			refreshToolbar: force => this.refreshToolbar(force),
+			repositionToolbars: () => this.requestReposition(),
 			close: () => this.close(),
 			dispatchAction: action => this.dispatchAction(action),
 		}
@@ -715,7 +790,6 @@ export class CanvasInlineToolSession<TAction> {
 			activeDocument.body.dataset[legacyKey(this.options.legacyDatasetPrefix, 'SessionId')] = this.sessionId
 		}
 
-		setInlineToolbarTop(wrapper)
 		wrapper.classList.add('bragi-inline-tool-mode')
 		if (this.options.legacyModeClass) wrapper.classList.add(this.options.legacyModeClass)
 		this.syncDataset()
@@ -774,9 +848,24 @@ export class CanvasInlineToolSession<TAction> {
 		}
 	}
 
+	/**
+	 * Screen-px vertical space each toolbar needs outside the node (own measured
+	 * height + node gap). Bars use visibility:hidden while opening, so they still
+	 * report a real height via getBoundingClientRect.
+	 */
+	private computeToolbarMetrics(): ToolbarMetrics {
+		const hasTopToolbar = Boolean(this.options.renderToolbar)
+		const topHeight = hasTopToolbar ? measureInlineToolbarHeight(this.options.canvas) : 0
+		const bottomHeight = this.options.bottomToolbar ? measureElementHeight(this.bottomBarEl) : 0
+		return {
+			topReserve: topHeight > 0 ? topHeight + NODE_TOOLBAR_GAP : 0,
+			bottomReserve: bottomHeight > 0 ? bottomHeight + NODE_TOOLBAR_GAP : 0,
+		}
+	}
+
 	private focusTargetNode(): CanvasViewportTarget | null {
 		if (!this.wrapperEl) return null
-		const focusTarget = calculateFocusTarget(this.options.canvas, this.options.node, this.wrapperEl, this.options.focusOptions)
+		const focusTarget = calculateFocusTarget(this.options.canvas, this.options.node, this.wrapperEl, this.options.focusOptions, this.computeToolbarMetrics())
 		const target = animateViewportTo(this.options.canvas, focusTarget.x, focusTarget.y, focusTarget.zoom)
 		if (target) return target
 		this.options.node.focus()
@@ -793,7 +882,7 @@ export class CanvasInlineToolSession<TAction> {
 		if (this.sessionState !== 'opening') return
 		for (let pass = 0; pass < INLINE_TOOL_RENDERED_CORRECTION_PASSES; pass++) {
 			const correctionTarget = this.wrapperEl
-				? calculateRenderedCorrectionTarget(this.options.canvas, this.options.node, this.wrapperEl, this.options.focusOptions)
+				? calculateRenderedCorrectionTarget(this.options.canvas, this.options.node, this.wrapperEl, this.options.focusOptions, this.computeToolbarMetrics())
 				: null
 			if (!correctionTarget) break
 			const appliedCorrection = animateViewportTo(this.options.canvas, correctionTarget.x, correctionTarget.y, correctionTarget.zoom)
@@ -803,10 +892,10 @@ export class CanvasInlineToolSession<TAction> {
 		}
 		if (this.sessionState !== 'opening') return
 		this.sessionState = 'active'
-		if (this.wrapperEl) setInlineToolbarTop(this.wrapperEl)
 		this.setToolbarPhase('ready')
 		this.options.onReady?.(this.createContext())
 		this.refreshToolbar()
+		this.startPositionLoop()
 	}
 
 	private readonly handleToolAction = (event: Event): void => {
@@ -816,6 +905,7 @@ export class CanvasInlineToolSession<TAction> {
 	}
 
 	private readonly handleCanvasGate = (event: Event): void => {
+		if (event.type !== 'wheel' && this.isOwnBottomBarTarget(event.target)) return
 		if (event.type !== 'wheel' && this.options.isToolEventTarget?.(event.target)) return
 		event.preventDefault()
 		event.stopPropagation()
@@ -871,11 +961,19 @@ export class CanvasInlineToolSession<TAction> {
 		return inScope
 	}
 
+	private isOwnBottomBarTarget(target: EventTarget | null): boolean {
+		if (!this.bottomBarEl) return false
+		const targetEl = eventTargetElement(target)
+		return targetEl ? this.bottomBarEl.contains(targetEl) : false
+	}
+
 	private isTargetInSessionScope(target: EventTarget | null): boolean {
 		const wrapper = this.wrapperEl
 		if (!wrapper) return false
 		const targetEl = eventTargetElement(target)
 		if (!targetEl) return this.keyboardScopeActive
+
+		if (this.isOwnBottomBarTarget(target)) return true
 
 		const targetWrapper = targetEl.closest<HTMLElement>('.canvas-wrapper')
 		if (targetWrapper) return targetWrapper === wrapper
@@ -887,6 +985,9 @@ export class CanvasInlineToolSession<TAction> {
 	}
 
 	private async finishCloseAfterViewport(target: CanvasViewportTarget | null): Promise<void> {
+		this.stopPositionLoop()
+		this.bottomBarEl?.remove()
+		this.bottomBarEl = null
 		await waitForViewport(this.options.canvas, target)
 		const wrapper = this.wrapperEl
 		const ownsWrapper = !wrapper || wrapper.dataset.bragiInlineToolSessionId === this.sessionId
@@ -898,7 +999,6 @@ export class CanvasInlineToolSession<TAction> {
 			activeDocument.body.classList.remove('bragi-inline-tool-active')
 			delete activeDocument.body.dataset.bragiInlineToolId
 			delete activeDocument.body.dataset.bragiInlineToolSessionId
-			clearInlineToolbarTop(wrapper)
 			if (this.options.legacyBodyClass) activeDocument.body.classList.remove(this.options.legacyBodyClass)
 			if (this.options.legacyDatasetPrefix) {
 				delete activeDocument.body.dataset[legacyKey(this.options.legacyDatasetPrefix, 'SessionId')]
@@ -909,7 +1009,6 @@ export class CanvasInlineToolSession<TAction> {
 				wrapper.removeEventListener(eventName, this.handleCanvasGate, true)
 			}
 			if (ownsWrapper) {
-				clearInlineToolbarTop(wrapper)
 				wrapper.classList.remove('bragi-inline-tool-mode')
 				if (this.options.legacyModeClass) wrapper.classList.remove(this.options.legacyModeClass)
 				delete wrapper.dataset.bragiInlineToolId

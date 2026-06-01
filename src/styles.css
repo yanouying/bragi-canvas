@@ -742,14 +742,13 @@
 
 .bragi-canvas-menu.bragi-inline-tool-menu-inline,
 .bragi-canvas-menu.bragi-annotation-menu-inline {
-	position: fixed !important;
-	top: var(--bragi-inline-tool-toolbar-top, 64px) !important;
-	left: 50% !important;
+	/* Node-relative: left/top are set in JS by positionNodeToolbar so the toolbar
+	   hugs the node a fixed gap above it, centered on the node. */
+	position: absolute !important;
 	right: auto !important;
 	bottom: auto !important;
 	gap: 1px;
 	padding: var(--size-2-1);
-	transform: translateX(-50%) !important;
 	z-index: 1000 !important;
 }
 
@@ -842,7 +841,7 @@ body.bragi-inline-tool-active .bragi-canvas-menu.bragi-inline-tool-menu-inline,
 body.bragi-annotation-mode-active .bragi-canvas-menu.bragi-annotation-menu-inline {
 	opacity: 1;
 	visibility: visible;
-	transform: translateX(-50%) translateY(0) !important;
+	transform: translateY(0) !important;
 	pointer-events: auto;
 	z-index: 1000 !important;
 	transition: opacity 140ms ease, transform 140ms ease, visibility 0s linear 0s;
@@ -854,7 +853,7 @@ body.bragi-inline-tool-active .bragi-canvas-menu.bragi-inline-tool-toolbar-hidde
 body.bragi-annotation-mode-active .bragi-canvas-menu.bragi-annotation-toolbar-hidden {
 	opacity: 0;
 	visibility: hidden;
-	transform: translateX(-50%) translateY(-4px) !important;
+	transform: translateY(-4px) !important;
 	pointer-events: none;
 	transition: opacity 120ms ease, transform 120ms ease, visibility 0s linear 120ms;
 }
@@ -2797,6 +2796,26 @@ body.bragi-annotation-mode-active .bragi-canvas-menu.bragi-annotation-toolbar-hi
 }
 
 
+/* ── Inline tool: framework-owned bottom toolbar ───────────────────────── */
+.bragi-inline-tool-bottom-bar {
+	/* Node-relative: left/top set in JS by positionNodeToolbar so the bar hugs
+	   the node a fixed gap below it, centered on the node. */
+	position: absolute;
+	z-index: 50;
+	pointer-events: auto;
+	transition: opacity 140ms ease, transform 140ms ease, visibility 0s linear 0s;
+}
+
+.bragi-inline-tool-bottom-bar.bragi-inline-tool-bottom-bar-hidden {
+	opacity: 0;
+	/* visibility:hidden (NOT display:none) keeps the bar measurable for the
+	   safe-rect fit while the open zoom animation runs. */
+	visibility: hidden;
+	transform: translateY(4px);
+	pointer-events: none;
+	transition: opacity 120ms ease, transform 120ms ease, visibility 0s linear 120ms;
+}
+
 /* ── Inline video editor: bottom toolbar ───────────────────────────────── */
 .bragi-video-edit-offscreen {
 	position: fixed;
@@ -2809,10 +2828,6 @@ body.bragi-annotation-mode-active .bragi-canvas-menu.bragi-annotation-toolbar-hi
 }
 
 .bragi-video-edit-bar {
-	position: absolute;
-	bottom: 24px;
-	left: 50%;
-	transform: translateX(-50%);
 	display: flex;
 	align-items: center;
 	/* Match the top toolbars' compact spacing model: tight container (4px padding, 1px gap),

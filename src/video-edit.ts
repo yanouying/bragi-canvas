@@ -162,11 +162,11 @@ class VideoEditMode {
 			actionEvent: VIDEO_EDIT_ACTION_EVENT,
 			renderToolbar: (menuEl, context) => this.renderToolbar(menuEl, context),
 			onAction: action => this.handleAction(action),
-			mountLayer: () => this.buildBar(),
+			bottomToolbar: { className: 'bragi-video-edit-bar', render: bar => this.buildBar(bar) },
 			isToolEventTarget: isVideoEditEventTarget,
 			onKeyDown: event => this.handleKeyDown(event),
 			onClose: () => this.cleanup(),
-			focusOptions: { maxZoom: 1, bottomMarginPx: 160 },
+			focusOptions: { maxZoom: 1 },
 		})
 		this.session.open()
 		this.setupPreviewVideo()
@@ -246,11 +246,7 @@ class VideoEditMode {
 	}
 
 	// ── Bottom toolbar ─────────────────────────────────────────────────────
-	private buildBar(): void {
-		const bar = createDiv({ cls: 'bragi-video-edit-bar' })
-		bar.addEventListener('pointerdown', event => event.stopPropagation())
-		bar.addEventListener('click', event => event.stopPropagation())
-
+	private buildBar(bar: HTMLElement): void {
 		this.playBtn = bar.createDiv({ cls: 'bragi-video-edit-btn bragi-video-edit-play' })
 		setIcon(this.playBtn, 'bragi-video-play')
 		setInstantTopTooltip(this.playBtn, 'Play / pause')
@@ -294,11 +290,8 @@ class VideoEditMode {
 		setInstantTopTooltip(exportBtn, 'Save the selected segment as a new clip')
 		exportBtn.addEventListener('click', () => { void this.exportClip() })
 
-		// Mount inside the canvas wrapper (not document.body) so the bar centers within the
-		// canvas pane — matching the top Exit toolbar — instead of the whole window when a
-		// sidebar is open.
-		const host = this.sourceCanvas.wrapperEl ?? activeDocument.body
-		host.appendChild(bar)
+		// The framework owns the bar element: it mounts it inside the canvas wrapper,
+		// positions it node-relative, and removes it on close.
 		this.barEl = bar
 		this.renderSelection()
 		this.updateTimeLabel(this.currentPreviewTime())
@@ -491,8 +484,16 @@ class VideoEditMode {
 		const anchorRect = anchor.getBoundingClientRect()
 		const dropdown = createDiv({ cls: 'bragi-more-dropdown bragi-video-edit-dropdown' })
 		dropdown.style.left = `${anchorRect.left}px`
-		// The bar sits near the bottom of the viewport, so open the menu upward.
-		dropdown.style.bottom = `${activeDocument.documentElement.clientHeight - anchorRect.top + 6}px`
+		// The bar now hugs the node and can sit anywhere vertically. Open the menu on
+		// whichever side of the anchor has more room (preferring upward, as before).
+		const viewportHeight = activeDocument.documentElement.clientHeight
+		const spaceAbove = anchorRect.top
+		const spaceBelow = viewportHeight - anchorRect.bottom
+		if (spaceAbove >= spaceBelow) {
+			dropdown.style.bottom = `${viewportHeight - anchorRect.top + 6}px`
+		} else {
+			dropdown.style.top = `${anchorRect.bottom + 6}px`
+		}
 
 		const addItem = (label: string, onClick: () => void): void => {
 			const item = dropdown.createDiv({ cls: 'bragi-more-dropdown-item' })
@@ -778,7 +779,7 @@ class VideoEditMode {
 			this.objectUrl = null
 		}
 
-		this.barEl?.remove()
+		// The framework owns the bottom bar element and removes it on close.
 		this.barEl = null
 	}
 }
