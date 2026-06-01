@@ -1249,7 +1249,7 @@ export function unpatchCanvasMenu(): void {
 }
 
 export function removeToolbarButtons(): void {
-	activeDocument.querySelectorAll('.bragi-inline-tool-bottom-bar, .bragi-video-edit-bar, .bragi-video-edit-dropdown, .bragi-video-edit-offscreen').forEach(el => el.remove())
+	activeDocument.querySelectorAll('.bragi-inline-tool-bottom-bar, .bragi-video-edit-bar, .bragi-video-edit-offscreen').forEach(el => el.remove())
 	activeDocument.querySelectorAll('.bragi-gen-image, .bragi-gen-video, .bragi-gen-text, .bragi-gen-audio, .bragi-stt, .bragi-isolate, .bragi-download, .bragi-asset-btn, .bragi-duplicate, .bragi-pin, .bragi-pano, .bragi-split, .bragi-grid, .bragi-compose, .bragi-annotate, .bragi-annotation-tool, .bragi-annotation-control, .bragi-annotation-color-button, .bragi-annotation-toolstrip, .bragi-annotation-separator, .bragi-annotation-undo, .bragi-annotation-redo, .bragi-annotation-exit, .bragi-annotation-save, .bragi-video-edit-open, .bragi-video-edit-exit, .bragi-more').forEach(el => {
 		if (el.previousElementSibling?.classList.contains('canvas-menu-separator')) {
 			el.previousElementSibling.remove()

@@ -772,7 +772,16 @@
 }
 
 .bragi-canvas-menu .bragi-annotation-save {
-	padding: 8px 12px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	/* Stretch to the row's content height so the solid block matches the sibling
+	   icon buttons — removes the uneven top/bottom gap that a fixed height left. */
+	align-self: stretch;
+	/* Extra breathing room on the left: a solid-fill button needs more separation
+	   from its neighbor than the toolbar's 1px gap gives transparent icon buttons. */
+	margin-inline-start: 5px;
+	padding: 0 12px;
 	border: 0;
 	border-radius: 6px;
 	background: var(--bragi-accent);
@@ -781,8 +790,6 @@
 	line-height: 1;
 	box-shadow: none;
 	outline: 0;
-	height: auto;
-	align-self: center;
 	transition: opacity 0.15s ease, background-color 0.15s ease;
 }
 
@@ -2872,13 +2879,44 @@ body.bragi-annotation-mode-active .bragi-canvas-menu.bragi-annotation-toolbar-hi
 	height: 20px;
 }
 
-.bragi-video-edit-sep {
-	width: 1px;
+/* Capture buttons in the top toolbar (current / first / last frame). */
+.bragi-video-edit-capture .svg-icon {
+	width: 20px;
 	height: 20px;
-	margin: 0 var(--size-2-1);
-	background: var(--bragi-border);
-	flex-shrink: 0;
-	align-self: center;
+}
+
+/* Save button in the top toolbar — matches the annotation Save button. */
+.bragi-canvas-menu .bragi-video-edit-save {
+	/* Stretch to the row's content height so the solid block matches the sibling
+	   icon buttons — removes the uneven top/bottom gap that a fixed height left. */
+	align-self: stretch;
+	/* Extra breathing room on the left: a solid-fill button needs more separation
+	   from its neighbor than the toolbar's 1px gap gives transparent icon buttons. */
+	margin-inline-start: 5px;
+	padding: 0 12px;
+	border: 0;
+	border-radius: 6px;
+	background: var(--bragi-accent);
+	color: var(--bragi-accent-text);
+	font-size: 12px;
+	line-height: 1;
+	box-shadow: none;
+	outline: 0;
+	transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.bragi-canvas-menu .bragi-video-edit-save:hover,
+.bragi-canvas-menu .bragi-video-edit-save:focus-visible,
+.bragi-canvas-menu .bragi-video-edit-save:active {
+	background: var(--bragi-accent-hover);
+	color: var(--bragi-accent-text);
+	border: 0;
+	box-shadow: none;
+	outline: 0;
+}
+
+.bragi-canvas-menu .bragi-video-edit-save .bragi-menu-button-label {
+	color: var(--bragi-accent-text);
 }
 
 .bragi-video-edit-timeline {
@@ -2985,59 +3023,8 @@ body.bragi-annotation-mode-active .bragi-canvas-menu.bragi-annotation-toolbar-hi
 	text-align: center;
 	font-size: 12px;
 	font-variant-numeric: tabular-nums;
-	color: var(--bragi-text-muted);
+	color: var(--bragi-text);
 	flex-shrink: 0;
-}
-
-/* Camera button: camera glyph + a small caret hinting at the capture dropdown. */
-.bragi-video-edit-camera {
-	width: auto;
-	gap: 1px;
-	padding-inline: 5px;
-}
-
-.bragi-video-edit-camera-icon {
-	display: inline-flex;
-}
-
-.bragi-video-edit-camera-icon .svg-icon {
-	width: 20px;
-	height: 20px;
-}
-
-.bragi-video-edit-camera-caret {
-	display: inline-flex;
-	color: var(--bragi-text-muted);
-}
-
-.bragi-video-edit-camera-caret .svg-icon {
-	width: 12px;
-	height: 12px;
-}
-
-.bragi-video-edit-export {
-	display: flex;
-	align-items: center;
-	/* Match the annotation Save button exactly. */
-	padding: 8px 12px;
-	border-radius: 6px;
-	background: var(--bragi-accent);
-	color: var(--bragi-accent-text);
-	font-size: 12px;
-	line-height: 1;
-	cursor: pointer;
-	flex-shrink: 0;
-	align-self: center;
-	transition: background-color 0.12s ease;
-}
-
-.bragi-video-edit-export:hover {
-	background: var(--bragi-accent-hover);
-}
-
-.bragi-video-edit-export .svg-icon {
-	width: 16px;
-	height: 16px;
 }
 
 
