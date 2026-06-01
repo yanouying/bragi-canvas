@@ -619,6 +619,7 @@ export function patchCanvasMenu(
 	onGridSplit?: (node: CanvasNode) => void,
 	onComposeImages?: (nodes: CanvasNode[]) => void,
 	onAnnotateImage?: (node: CanvasNode, canvas: Canvas) => void,
+	onEditVideo?: (node: CanvasNode, canvas: Canvas) => void,
 ): void {
 	if (menuUninstaller) return
 
@@ -860,6 +861,12 @@ export function patchCanvasMenu(
 			}
 
 			if (isVideoNode) {
+				if (onEditVideo) {
+					const editBtn = createMenuButton('bragi-video-edit-open', 'bragi-video-edit', 'Edit video', () => {
+						fadeOutNativeToolbar(menuEl, () => onEditVideo(selectedNode, canvas))
+					})
+					menuEl.appendChild(editBtn)
+				}
 				createMarkButton(menuEl, canvas, selectedNodes)
 				const downloadBtn = createMenuButton('bragi-download', 'bragi-download', 'Download', () => {
 					void downloadMediaFile(filePath, selectedNode)
@@ -1240,7 +1247,8 @@ export function unpatchCanvasMenu(): void {
 }
 
 export function removeToolbarButtons(): void {
-	activeDocument.querySelectorAll('.bragi-gen-image, .bragi-gen-video, .bragi-gen-text, .bragi-gen-audio, .bragi-stt, .bragi-isolate, .bragi-download, .bragi-asset-btn, .bragi-duplicate, .bragi-pin, .bragi-pano, .bragi-split, .bragi-grid, .bragi-compose, .bragi-annotate, .bragi-annotation-tool, .bragi-annotation-control, .bragi-annotation-color-button, .bragi-annotation-toolstrip, .bragi-annotation-separator, .bragi-annotation-undo, .bragi-annotation-redo, .bragi-annotation-exit, .bragi-annotation-save, .bragi-more').forEach(el => {
+	activeDocument.querySelectorAll('.bragi-video-edit-bar, .bragi-video-edit-dropdown, .bragi-video-edit-offscreen').forEach(el => el.remove())
+	activeDocument.querySelectorAll('.bragi-gen-image, .bragi-gen-video, .bragi-gen-text, .bragi-gen-audio, .bragi-stt, .bragi-isolate, .bragi-download, .bragi-asset-btn, .bragi-duplicate, .bragi-pin, .bragi-pano, .bragi-split, .bragi-grid, .bragi-compose, .bragi-annotate, .bragi-annotation-tool, .bragi-annotation-control, .bragi-annotation-color-button, .bragi-annotation-toolstrip, .bragi-annotation-separator, .bragi-annotation-undo, .bragi-annotation-redo, .bragi-annotation-exit, .bragi-annotation-save, .bragi-video-edit-open, .bragi-video-edit-exit, .bragi-more').forEach(el => {
 		if (el.previousElementSibling?.classList.contains('canvas-menu-separator')) {
 			el.previousElementSibling.remove()
 		}
