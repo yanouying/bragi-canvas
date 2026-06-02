@@ -743,13 +743,15 @@
 .bragi-canvas-menu.bragi-inline-tool-menu-inline,
 .bragi-canvas-menu.bragi-annotation-menu-inline {
 	/* Node-relative: left/top are set in JS by positionNodeToolbar so the toolbar
-	   hugs the node a fixed gap above it, centered on the node. */
-	position: absolute !important;
-	right: auto !important;
-	bottom: auto !important;
+	   hugs the node a fixed gap above it, centered on the node. This (0,2,0) selector
+	   outranks Obsidian's native .canvas-card-menu (0,1,0), so it overrides core's
+	   positioning/z-index without !important. (Core does not inline z-index on this menu.) */
+	position: absolute;
+	right: auto;
+	bottom: auto;
 	gap: 1px;
 	padding: var(--size-2-1);
-	z-index: 1000 !important;
+	z-index: 1000;
 }
 
 .bragi-canvas-menu .bragi-annotation-separator {
@@ -815,12 +817,17 @@
 	transition: opacity 120ms ease, transform 120ms ease, visibility 0s linear 120ms;
 }
 
-.bragi-canvas-menu.bragi-native-toolbar-suppressed {
-	opacity: 0 !important;
-	visibility: hidden !important;
-	transform: translateY(-4px) !important;
-	pointer-events: none !important;
-	transition: none !important;
+/* Suppressed = force-hide. Anchored with body + .canvas-wrapper mode classes to reach
+   specificity (0,4,0), strictly above the show-state rule (0,3,0) further down, so it
+   wins without !important. Ordering note: show is (0,3,0); hidden + suppressed are both
+   (0,4,0) — keep that tiering when editing. */
+body.bragi-inline-tool-active .canvas-wrapper.bragi-inline-tool-mode .bragi-canvas-menu.bragi-native-toolbar-suppressed,
+body.bragi-annotation-mode-active .canvas-wrapper.bragi-annotation-mode .bragi-canvas-menu.bragi-native-toolbar-suppressed {
+	opacity: 0;
+	visibility: hidden;
+	transform: translateY(-4px);
+	pointer-events: none;
+	transition: none;
 }
 
 .bragi-inline-tool-mode .canvas-node:not(.bragi-inline-tool-target),
@@ -836,31 +843,35 @@
 .bragi-inline-tool-mode .canvas-card-menu:not(.bragi-canvas-menu),
 .bragi-annotation-mode .canvas-controls,
 .bragi-annotation-mode .canvas-card-menu:not(.bragi-canvas-menu) {
+	/* Native controls/menu are fully hidden in tool mode (opacity:0 + visibility:hidden +
+	   pointer-events:none), so their stacking order is moot — no z-index override needed.
+	   Obsidian sets z-index inline on these elements, which only !important could have beaten,
+	   but a hidden element never participates in paint order so it was redundant. */
 	opacity: 0;
 	visibility: hidden;
 	pointer-events: none;
-	z-index: 1 !important;
 }
 
-.bragi-inline-tool-mode .bragi-canvas-menu,
-.bragi-annotation-mode .bragi-canvas-menu,
+/* Show state (toolbar visible). Body-anchored at specificity (0,3,0) — beats Obsidian's
+   native .canvas-card-menu transform (0,1,0) without !important. The hidden/suppressed
+   rules sit a step higher at (0,4,0) so they win when their class is present. */
 body.bragi-inline-tool-active .bragi-canvas-menu.bragi-inline-tool-menu-inline,
 body.bragi-annotation-mode-active .bragi-canvas-menu.bragi-annotation-menu-inline {
 	opacity: 1;
 	visibility: visible;
-	transform: translateY(0) !important;
+	transform: translateY(0);
 	pointer-events: auto;
-	z-index: 1000 !important;
+	z-index: 1000;
 	transition: opacity 140ms ease, transform 140ms ease, visibility 0s linear 0s;
 }
 
-.bragi-inline-tool-mode .bragi-canvas-menu.bragi-inline-tool-toolbar-hidden,
-.bragi-annotation-mode .bragi-canvas-menu.bragi-annotation-toolbar-hidden,
-body.bragi-inline-tool-active .bragi-canvas-menu.bragi-inline-tool-toolbar-hidden,
-body.bragi-annotation-mode-active .bragi-canvas-menu.bragi-annotation-toolbar-hidden {
+/* Hidden toggle. Anchored with the .canvas-wrapper mode class to reach (0,4,0), strictly
+   above the show rule (0,3,0), so it wins on transform/opacity without !important. */
+body.bragi-inline-tool-active .canvas-wrapper.bragi-inline-tool-mode .bragi-canvas-menu.bragi-inline-tool-toolbar-hidden,
+body.bragi-annotation-mode-active .canvas-wrapper.bragi-annotation-mode .bragi-canvas-menu.bragi-annotation-toolbar-hidden {
 	opacity: 0;
 	visibility: hidden;
-	transform: translateY(-4px) !important;
+	transform: translateY(-4px);
 	pointer-events: none;
 	transition: opacity 120ms ease, transform 120ms ease, visibility 0s linear 120ms;
 }
@@ -869,65 +880,68 @@ body.bragi-annotation-mode-active .bragi-canvas-menu.bragi-annotation-toolbar-hi
 .bragi-annotation-mode .bragi-annotation-target {
 	opacity: 1;
 	pointer-events: auto;
-	z-index: 50 !important;
+	/* z-index is set inline on the node by the session (elevateTargetNode in
+	   canvas-inline-tool.ts) — Obsidian writes z-index inline on .canvas-node, which a
+	   stylesheet rule cannot override, so it can't live here. */
 }
 
-.bragi-inline-tool-mode .bragi-inline-tool-target .canvas-node-container,
-.bragi-inline-tool-mode .bragi-inline-tool-target.is-selected .canvas-node-container,
-.bragi-inline-tool-mode .bragi-inline-tool-target.is-focused .canvas-node-container,
-.bragi-inline-tool-mode .canvas-node.bragi-inline-tool-target .canvas-node-container,
-.bragi-annotation-mode .bragi-annotation-target .canvas-node-container,
-.bragi-annotation-mode .bragi-annotation-target.is-selected .canvas-node-container,
-.bragi-annotation-mode .bragi-annotation-target.is-focused .canvas-node-container,
-.bragi-annotation-mode .canvas-node.bragi-annotation-target .canvas-node-container {
-	border-color: transparent !important;
-	box-shadow: none !important;
-	outline: 0 !important;
+/* Strip Obsidian's .is-selected/.is-focused node chrome on the target node during
+   tool/annotation mode. The body + .canvas-wrapper + .canvas-node anchor chain gives
+   specificity (0,6,0), which beats core's worst case
+   `.canvas-node.is-selected.is-themed.is-dragging .canvas-node-container` (0,5,0)
+   without needing !important. */
+body.bragi-inline-tool-active .canvas-wrapper.bragi-inline-tool-mode .canvas-node.bragi-inline-tool-target .canvas-node-container,
+body.bragi-annotation-mode-active .canvas-wrapper.bragi-annotation-mode .canvas-node.bragi-annotation-target .canvas-node-container {
+	border-color: transparent;
+	box-shadow: none;
+	outline: 0;
 }
 
-.bragi-inline-tool-mode .bragi-inline-tool-target .canvas-node-container::before,
-.bragi-inline-tool-mode .bragi-inline-tool-target .canvas-node-container::after,
-.bragi-inline-tool-mode .bragi-inline-tool-target:hover .canvas-node-container::before,
-.bragi-inline-tool-mode .bragi-inline-tool-target.is-selected .canvas-node-container::before,
-.bragi-inline-tool-mode .bragi-inline-tool-target.is-focused .canvas-node-container::before,
-.bragi-annotation-mode .bragi-annotation-target .canvas-node-container::before,
-.bragi-annotation-mode .bragi-annotation-target .canvas-node-container::after,
-.bragi-annotation-mode .bragi-annotation-target:hover .canvas-node-container::before,
-.bragi-annotation-mode .bragi-annotation-target.is-selected .canvas-node-container::before,
-.bragi-annotation-mode .bragi-annotation-target.is-focused .canvas-node-container::before {
-	border-color: transparent !important;
-	box-shadow: none !important;
-	outline: 0 !important;
+/* Same as above, for the ::before/::after chrome Obsidian draws on selected/focused nodes.
+   Anchored chain + pseudo-element = specificity (0,6,1), beating core's pseudo rules. */
+body.bragi-inline-tool-active .canvas-wrapper.bragi-inline-tool-mode .canvas-node.bragi-inline-tool-target .canvas-node-container::before,
+body.bragi-inline-tool-active .canvas-wrapper.bragi-inline-tool-mode .canvas-node.bragi-inline-tool-target .canvas-node-container::after,
+body.bragi-annotation-mode-active .canvas-wrapper.bragi-annotation-mode .canvas-node.bragi-annotation-target .canvas-node-container::before,
+body.bragi-annotation-mode-active .canvas-wrapper.bragi-annotation-mode .canvas-node.bragi-annotation-target .canvas-node-container::after {
+	border-color: transparent;
+	box-shadow: none;
+	outline: 0;
 }
 
-.bragi-inline-tool-mode .bragi-inline-tool-target .canvas-node-label,
-.bragi-inline-tool-mode .bragi-inline-tool-target .mod-hover-label,
-.bragi-inline-tool-mode .bragi-inline-tool-target .bragi-media-meta-label,
-.bragi-annotation-mode .bragi-annotation-target .canvas-node-label,
-.bragi-annotation-mode .bragi-annotation-target .mod-hover-label,
-.bragi-annotation-mode .bragi-annotation-target .bragi-media-meta-label {
-	display: none !important;
-	opacity: 0 !important;
+/* Hide node labels on the target during tool/annotation mode. Anchored chain (0,6,0)
+   beats core label rules like `.canvas-node.is-selected .canvas-node-label` (0,3,0). */
+body.bragi-inline-tool-active .canvas-wrapper.bragi-inline-tool-mode .canvas-node.bragi-inline-tool-target .canvas-node-label,
+body.bragi-inline-tool-active .canvas-wrapper.bragi-inline-tool-mode .canvas-node.bragi-inline-tool-target .mod-hover-label,
+body.bragi-inline-tool-active .canvas-wrapper.bragi-inline-tool-mode .canvas-node.bragi-inline-tool-target .bragi-media-meta-label,
+body.bragi-annotation-mode-active .canvas-wrapper.bragi-annotation-mode .canvas-node.bragi-annotation-target .canvas-node-label,
+body.bragi-annotation-mode-active .canvas-wrapper.bragi-annotation-mode .canvas-node.bragi-annotation-target .mod-hover-label,
+body.bragi-annotation-mode-active .canvas-wrapper.bragi-annotation-mode .canvas-node.bragi-annotation-target .bragi-media-meta-label {
+	display: none;
 }
 
-.bragi-inline-tool-mode .canvas-node-connection-point,
-.bragi-inline-tool-mode .canvas-node-connection-point::after,
-.bragi-inline-tool-mode .canvas-node-resizer:hover .canvas-node-connection-point,
-.bragi-inline-tool-mode .canvas-node-resizer:hover .canvas-node-connection-point::after,
-.bragi-annotation-mode .canvas-node-connection-point,
-.bragi-annotation-mode .canvas-node-connection-point::after,
-.bragi-annotation-mode .canvas-node-resizer:hover .canvas-node-connection-point,
-.bragi-annotation-mode .canvas-node-resizer:hover .canvas-node-connection-point::after {
-	display: none !important;
-	visibility: hidden !important;
-	opacity: 0 !important;
-	width: 0 !important;
-	height: 0 !important;
-	background: transparent !important;
-	border: 0 !important;
-	box-shadow: none !important;
-	pointer-events: none !important;
-	transform: none !important;
+/* Fully neutralize Obsidian's core connection-point controls (incl. their :hover and
+   ::after states) during tool/annotation mode. The body + .canvas-wrapper anchors lift
+   each selector a full step above the core rules they override:
+   point (0,3,0) > core (0,1,0); ::after (0,3,1) > core (0,1,1);
+   resizer:hover ::after (0,4,1) > core (0,2,1) — no !important needed. */
+body.bragi-inline-tool-active .canvas-wrapper.bragi-inline-tool-mode .canvas-node-connection-point,
+body.bragi-inline-tool-active .canvas-wrapper.bragi-inline-tool-mode .canvas-node-connection-point::after,
+body.bragi-inline-tool-active .canvas-wrapper.bragi-inline-tool-mode .canvas-node-resizer:hover .canvas-node-connection-point,
+body.bragi-inline-tool-active .canvas-wrapper.bragi-inline-tool-mode .canvas-node-resizer:hover .canvas-node-connection-point::after,
+body.bragi-annotation-mode-active .canvas-wrapper.bragi-annotation-mode .canvas-node-connection-point,
+body.bragi-annotation-mode-active .canvas-wrapper.bragi-annotation-mode .canvas-node-connection-point::after,
+body.bragi-annotation-mode-active .canvas-wrapper.bragi-annotation-mode .canvas-node-resizer:hover .canvas-node-connection-point,
+body.bragi-annotation-mode-active .canvas-wrapper.bragi-annotation-mode .canvas-node-resizer:hover .canvas-node-connection-point::after {
+	display: none;
+	visibility: hidden;
+	opacity: 0;
+	width: 0;
+	height: 0;
+	background: transparent;
+	border: 0;
+	box-shadow: none;
+	pointer-events: none;
+	transform: none;
 }
 
 .bragi-annotation-target .bragi-annotation-content {
@@ -1598,7 +1612,7 @@ body.bragi-annotation-mode-active .bragi-canvas-menu.bragi-annotation-toolbar-hi
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	margin: var(--size-4-2) 0 var(--size-4-4);
+	margin: var(--size-4-4) 0;
 	padding: 0 var(--size-4-5);
 	border: none;
 	border-radius: var(--radius-l);
@@ -1607,11 +1621,11 @@ body.bragi-annotation-mode-active .bragi-canvas-menu.bragi-annotation-toolbar-hi
 .bragi-empty-setting .setting-item-info {
 	margin-right: 0;
 	width: 100%;
-	padding: 0 !important;
-	border-radius: 0 !important;
-	background: none !important;
-	background-color: transparent !important;
-	box-shadow: none !important;
+	padding: 0;
+	border-radius: 0;
+	background: none;
+	background-color: transparent;
+	box-shadow: none;
 	text-align: center;
 }
 
@@ -1619,10 +1633,10 @@ body.bragi-annotation-mode-active .bragi-canvas-menu.bragi-annotation-toolbar-hi
 	color: var(--text-muted);
 	display: block;
 	width: 100%;
-	border-radius: 0 !important;
-	background: none !important;
-	background-color: transparent !important;
-	box-shadow: none !important;
+	border-radius: 0;
+	background: none;
+	background-color: transparent;
+	box-shadow: none;
 	font-size: var(--font-ui-medium);
 	font-weight: var(--font-normal);
 	line-height: 1.45;
@@ -1633,8 +1647,8 @@ body.bragi-annotation-mode-active .bragi-canvas-menu.bragi-annotation-toolbar-hi
 .bragi-empty-setting .setting-item-info::after,
 .bragi-empty-setting .setting-item-name::before,
 .bragi-empty-setting .setting-item-name::after {
-	display: none !important;
-	content: none !important;
+	display: none;
+	content: none;
 }
 
 .bragi-empty-setting .setting-item-description,
@@ -1663,7 +1677,7 @@ body.bragi-annotation-mode-active .bragi-canvas-menu.bragi-annotation-toolbar-hi
 	grid-template-columns: auto minmax(0, 1fr);
 	grid-template-rows: auto auto;
 	align-items: center;
-	column-gap: 8px;
+	gap: 0 8px;
 	min-width: 0;
 }
 
