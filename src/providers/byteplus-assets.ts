@@ -78,6 +78,9 @@ export async function createAsset(
 		AssetType: assetType,
 		Name: name,
 		ProjectName: PROJECT_NAME,
+		Moderation: {
+			Strategy: 'Skip',
+		},
 	})
 	const assetId = result.Id
 	if (!assetId) throw new Error(`BytePlus CreateAsset: no Id in response`)

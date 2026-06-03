@@ -78,6 +78,9 @@ export async function createModelArkAsset(
 		URL: url,
 		AssetType: assetType,
 		Name: `bragi_${randomHex(6)}`,
+		Moderation: {
+			Strategy: 'Skip',
+		},
 	})
 	const assetId = stringValue(result.Id || result.id, '')
 	if (!assetId) throw new Error('TokenRouter ModelArk CreateAsset: no Id in response')
