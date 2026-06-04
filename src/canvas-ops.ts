@@ -604,6 +604,13 @@ export function duplicateWithConnections(canvas: Canvas, node: CanvasNode): void
 	}
 
 	void canvas.requestSave()
+	// importData mutates the data model but does not repaint on its own; without
+	// a frame request the duplicated node is saved to disk yet never rendered.
+	try {
+		void canvas.requestFrame()
+	} catch (frameErr) {
+		console.debug('Bragi duplicate: canvas frame refresh skipped', frameErr)
+	}
 	} catch (err) {
 		console.error('[Bragi] duplicateWithConnections failed', err)
 	}
