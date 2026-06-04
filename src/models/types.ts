@@ -17,6 +17,11 @@ export interface ModelParam {
 	id: string
 	label: string
 	type: 'select' | 'number' | 'range'
+	/**
+	 * Restrict this parameter to specific generation modes. Omit for parameters
+	 * that apply to every mode on the model.
+	 */
+	modes?: Mode[]
 	options?: ParamOption[]
 	/**
 	 * Mode-specific option overrides. When the user picks one of these modes, the

@@ -22,7 +22,7 @@ import { MuleRouterImageProvider, MuleRouterVideoProvider, testMuleRouterConnect
 import { XAIImageProvider, XAIVideoProvider, XAIAudioProvider } from './xai'
 import { TokenRouterImageProvider, TokenRouterTextProvider, TokenRouterVideoProvider } from './tokenrouter'
 import { Token360VideoProvider } from './token360'
-import { DashScopeAudioProvider } from './dashscope'
+import { DashScopeAudioProvider, DashScopeVideoProvider, dashScopeUrl } from './dashscope'
 
 const LUMA_ENDPOINT = 'https://luma.bragi.now'
 import { OpenAITextProvider, APIMartTextProvider, GeminiTextProvider, AnthropicTextProvider, BedrockClaudeTextProvider, XAITextProvider } from './text-gen'
@@ -347,18 +347,23 @@ export const PROVIDERS: ProviderSpec[] = [
 		id: 'dashscope',
 		name: 'DashScope',
 		docUrl: 'https://dashscope.console.aliyun.com/',
-		fields: [{ key: 'dashscope', label: 'API Key', placeholder: 'sk-...', type: 'password' }],
+		fields: [
+			{ key: 'dashscope', label: 'API Key', placeholder: 'sk-...', type: 'password' },
+			{ key: 'dashscopeBaseUrl', label: 'Base URL', placeholder: 'https://dashscope.aliyuncs.com/api/v1', type: 'text' },
+		],
 		isConfigured: (s) => !!s.providers.dashscope,
+		makeVideo: ({ settings, app, outputDir }) =>
+			new DashScopeVideoProvider(settings.providers.dashscope, app, outputDir, settings.providers.dashscopeBaseUrl),
 		makeAudio: ({ settings, app, outputDir }) =>
-			new DashScopeAudioProvider(settings.providers.dashscope, app, outputDir),
+			new DashScopeAudioProvider(settings.providers.dashscope, app, outputDir, settings.providers.dashscopeBaseUrl),
 		makeText: ({ settings }) =>
-			new DashScopeTextProvider(settings.providers.dashscope),
+			new DashScopeTextProvider(settings.providers.dashscope, settings.providers.dashscopeBaseUrl),
 		testConnection: async (d) => {
 			const key = d.dashscope || ''
 			if (!key) return { ok: false, message: 'API key is empty.' }
 			try {
 				const resp = await requestUrl({
-					url: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation',
+					url: dashScopeUrl(d.dashscopeBaseUrl, '/services/aigc/text-generation/generation'),
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',

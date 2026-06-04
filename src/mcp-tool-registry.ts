@@ -455,7 +455,9 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 								label: p.label,
 								type: p.type,
 								default: p.default,
+								...(p.modes ? { modes: p.modes } : {}),
 								...(p.options ? { options: p.options } : {}),
+								...(p.optionsByMode ? { optionsByMode: p.optionsByMode } : {}),
 								...(p.min !== undefined ? { min: p.min, max: p.max, step: p.step, unit: p.unit } : {}),
 							})),
 						})
@@ -527,13 +529,14 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 				}
 				if (!prompt) throw new Error('Node contains no prompt text')
 
-				// Resolve params with defaults
+				const selectedMode = (mode as Mode) || model.modes[0] || null
+
+				// Resolve params with defaults, but only for params visible in this mode.
 				const resolvedParams: Record<string, string | number> = { ...(params || {}) }
 				for (const p of model.params) {
+					if (p.modes && (!selectedMode || !p.modes.includes(selectedMode))) continue
 					resolvedParams[p.id] = resolvedParams[p.id] ?? p.default
 				}
-
-				const selectedMode = (mode as Mode) || model.modes[0] || null
 
 				const panelResult: PanelResult = {
 					prompt,
