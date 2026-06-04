@@ -103,8 +103,8 @@ assert.match(
 
 assert.match(
 	registrySource,
-	/new DashScopeTextProvider\(settings\.providers\.dashscope\)/,
-	'DashScope text provider must be registered in provider registry',
+	/new DashScopeTextProvider\(settings\.providers\.dashscope, settings\.providers\.dashscopeBaseUrl\)/,
+	'DashScope text provider must be registered with the configured base URL in provider registry',
 )
 
 assert.match(

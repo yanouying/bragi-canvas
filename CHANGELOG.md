@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.22.0
+
+- Added DashScope Wan 2.7 video generation with text-to-video, image-to-video, reference-to-video, video extend, and video edit modes.
+- Added configurable DashScope native base URL support, including southeast workspace compatibility.
+- Simplified Wan 2.7 UI params and mode labels, including merging multi-image reference into Ref Image and fixing the Duration toolbar hover height.
+- Fixed grid split, collage, and duplicate-with-connections flows so newly imported canvas nodes render immediately after being persisted.
+- Fixed reference strip drag state so image, text, and audio refs self-heal if a drag is cancelled or dropped outside the window.
+- Bumped the plugin version to `1.22.0`.
+
 ## 1.21.3
 
 - Fixed TokenRouter text generation with upstream video references by sending relay video URLs as `video_url` content parts.
