@@ -3,11 +3,10 @@ import type { App } from 'obsidian'
 import type { Canvas, CanvasNode } from './types/canvas-internal'
 import { clearIncomingRefAttachments, isGeneratingPlaceholderNode } from './generating-node'
 import { getUpstreamInputs } from './edge-parser'
+import { beginRefDrag, endRefDrag, isRefDragActive } from './ref-drag-guard'
 
 const STRIP_CLASS = 'bragi-audio-ref-strip'
 const NODE_HAS_AUDIO_REFS_CLASS = 'bragi-has-audio-refs'
-
-let isDragging = false
 
 export function getOrderedAudios(canvas: Canvas, node: CanvasNode): string[] {
 	const upstream = getUpstreamInputs(canvas, node)
@@ -55,7 +54,7 @@ async function getAudioDuration(app: App, filePath: string): Promise<number> {
 }
 
 export function updateAudioRefStrip(canvas: Canvas, node: CanvasNode, app: App): void {
-	if (isDragging) return
+	if (isRefDragActive()) return
 	if (isGeneratingPlaceholderNode(node)) {
 		clearIncomingRefAttachments(node)
 		return
@@ -128,12 +127,12 @@ export function updateAudioRefStrip(canvas: Canvas, node: CanvasNode, app: App):
 		})
 
 		wrapper.addEventListener('dragstart', (e) => {
-			isDragging = true
+			beginRefDrag()
 			e.dataTransfer!.setData('text/plain', `bragi-audio-ref:${audioPath}`)
 			wrapper.classList.add('is-dragging')
 		})
 		wrapper.addEventListener('dragend', () => {
-			isDragging = false
+			endRefDrag()
 			wrapper.classList.remove('is-dragging')
 		})
 		wrapper.addEventListener('dragover', (e) => {
@@ -161,7 +160,7 @@ export function updateAudioRefStrip(canvas: Canvas, node: CanvasNode, app: App):
 			const data = node.getData() as unknown
 			node.setData({ ...data, bragiAudioOrder: newOrder })
 
-			isDragging = false
+			endRefDrag()
 			updateAudioRefStrip(canvas, node, app)
 		})
 
@@ -182,7 +181,7 @@ export function updateAudioRefStrip(canvas: Canvas, node: CanvasNode, app: App):
 }
 
 export function refreshAllAudioRefs(canvas: Canvas, app: App): void {
-	if (isDragging) return
+	if (isRefDragActive()) return
 	if (!canvas.nodes) return
 	const nodes = canvas.nodes instanceof Map
 		? Array.from(canvas.nodes.values())
