@@ -2,11 +2,10 @@
 import type { App } from 'obsidian'
 import type { Canvas, CanvasNode } from './types/canvas-internal'
 import { clearIncomingRefAttachments, isGeneratingPlaceholderNode } from './generating-node'
+import { beginRefDrag, endRefDrag, isRefDragActive } from './ref-drag-guard'
 
 const STRIP_CLASS = 'bragi-text-ref-strip'
 const NODE_HAS_TEXT_REFS_CLASS = 'bragi-has-text-refs'
-
-let isDragging = false
 
 export interface TextRef {
 	nodeId: string
@@ -118,7 +117,7 @@ export async function getOrderedPrompts(
 }
 
 export function updateTextRefStrip(canvas: Canvas, node: CanvasNode, app: App): void {
-	if (isDragging) return
+	if (isRefDragActive()) return
 	if (isGeneratingPlaceholderNode(node)) {
 		clearIncomingRefAttachments(node)
 		return
@@ -182,12 +181,12 @@ export function updateTextRefStrip(canvas: Canvas, node: CanvasNode, app: App): 
 		row.appendChild(preview)
 
 		row.addEventListener('dragstart', (e) => {
-			isDragging = true
+			beginRefDrag()
 			e.dataTransfer!.setData('text/plain', `bragi-text-ref:${ref.nodeId}`)
 			row.classList.add('is-dragging')
 		})
 		row.addEventListener('dragend', () => {
-			isDragging = false
+			endRefDrag()
 			row.classList.remove('is-dragging')
 		})
 		row.addEventListener('dragover', (e) => {
@@ -215,7 +214,7 @@ export function updateTextRefStrip(canvas: Canvas, node: CanvasNode, app: App): 
 			const d = node.getData() as unknown
 			node.setData({ ...d, bragiTextOrder: order })
 
-			isDragging = false
+			endRefDrag()
 			updateTextRefStrip(canvas, node, app)
 		})
 
@@ -233,7 +232,7 @@ export function updateTextRefStrip(canvas: Canvas, node: CanvasNode, app: App): 
 }
 
 export function refreshAllTextRefs(canvas: Canvas, app: App): void {
-	if (isDragging) return
+	if (isRefDragActive()) return
 	if (!canvas.nodes) return
 	const nodes = canvas.nodes instanceof Map
 		? Array.from(canvas.nodes.values())

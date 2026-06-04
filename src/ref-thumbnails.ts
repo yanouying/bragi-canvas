@@ -3,14 +3,12 @@ import type { App } from 'obsidian'
 import type { Canvas, CanvasNode } from './types/canvas-internal'
 import { getUpstreamInputs } from './edge-parser'
 import { clearIncomingRefAttachments, isGeneratingPlaceholderNode } from './generating-node'
+import { beginRefDrag, endRefDrag, isRefDragActive } from './ref-drag-guard'
 
 const STRIP_CLASS = 'bragi-ref-strip'
 const NODE_HAS_REFS_CLASS = 'bragi-has-refs'
 
 const adjustedNodes = new Set<string>()
-
-// Block refresh during drag
-let isDragging = false
 
 /**
  * Get the ordered image list for a node.
@@ -45,7 +43,7 @@ export function getOrderedImages(canvas: Canvas, node: CanvasNode): string[] {
 }
 
 export function updateRefThumbnails(canvas: Canvas, node: CanvasNode, app: App): void {
-	if (isDragging) return // Don't rebuild during drag
+	if (isRefDragActive()) return // Don't rebuild during an active reorder drag
 	if (isGeneratingPlaceholderNode(node)) {
 		clearIncomingRefAttachments(node)
 		return
@@ -119,13 +117,13 @@ export function updateRefThumbnails(canvas: Canvas, node: CanvasNode, app: App):
 
 		// Drag events
 		wrapper.addEventListener('dragstart', (e) => {
-			isDragging = true
+			beginRefDrag()
 			e.dataTransfer!.setData('text/plain', imgPath)
 			wrapper.classList.add('is-dragging')
 		})
 
 		wrapper.addEventListener('dragend', () => {
-			isDragging = false
+			endRefDrag()
 			wrapper.classList.remove('is-dragging')
 		})
 
@@ -160,7 +158,7 @@ export function updateRefThumbnails(canvas: Canvas, node: CanvasNode, app: App):
 			node.setData({ ...rest, bragiImageOrder: newOrder })
 
 			// Force rebuild
-			isDragging = false
+			endRefDrag()
 			updateRefThumbnails(canvas, node, app)
 		})
 
@@ -224,7 +222,7 @@ export function getAssetIds(canvas: Canvas, node: CanvasNode, providerId?: strin
 }
 
 export function refreshAllThumbnails(canvas: Canvas, app: App): void {
-	if (isDragging) return
+	if (isRefDragActive()) return
 	if (!canvas.nodes) return
 
 	const nodes = canvas.nodes instanceof Map

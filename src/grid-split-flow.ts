@@ -95,11 +95,17 @@ export async function splitImageNodeIntoTiles(plugin: BragiCanvas, canvas: Canva
 	}
 
 	canvas.importData({
-		...current,
 		nodes: [...current.nodes, ...newNodes],
 		edges: [...current.edges, ...newEdges],
 	})
 	void canvas.requestSave()
+	// importData mutates the data model but does not repaint on its own; without
+	// a frame request the new tile nodes are saved to disk yet never rendered.
+	try {
+		void canvas.requestFrame()
+	} catch (err) {
+		console.debug('Bragi split: canvas frame refresh skipped', err)
+	}
 
 	new Notice(`Split into ${tiles.length} tile${tiles.length === 1 ? '' : 's'}`)
 }

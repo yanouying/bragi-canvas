@@ -276,11 +276,17 @@ export async function composeSelectedImageNodes(plugin: BragiCanvas, canvas: Can
 
 	const current = canvas.getData()
 	canvas.importData({
-		...current,
 		nodes: [...current.nodes, outputNode],
 		edges: [...current.edges, ...edges],
 	})
 	void canvas.requestSave()
+	// importData mutates the data model but does not repaint on its own; without
+	// a frame request the collage node is saved to disk yet never rendered.
+	try {
+		void canvas.requestFrame()
+	} catch (err) {
+		console.debug('Bragi collage: canvas frame refresh skipped', err)
+	}
 
 	const scaleNote = wasScaleLimited ? ` (${pixelScale.toFixed(2)}x)` : ''
 	new Notice(`Collage ready${scaleNote}`)
