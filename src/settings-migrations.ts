@@ -10,7 +10,7 @@ import { DEFAULT_SETTINGS, type BragiSettings, type GeneratedAssetRecord, type L
 
 type UnknownRecord = Record<string, unknown>
 
-export const CURRENT_SETTINGS_SCHEMA_VERSION = 5
+export const CURRENT_SETTINGS_SCHEMA_VERSION = 7
 const PROVIDER_MODEL_PREFS_SCHEMA_VERSION = 2
 
 export interface SettingsMigrationResult {
@@ -501,6 +501,17 @@ function migrateProviderModelPrefs(settings: BragiSettings, previousVersion: num
 	pruneProviderModelPrefs(settings)
 }
 
+function migrateDashScopeWan27(settings: BragiSettings, previousVersion: number): void {
+	if (previousVersion >= 6) return
+	if (!settings.providers.dashscope?.trim()) return
+	const modelId = 'wan-2.7'
+	if (!connectProviderToModel(settings, 'dashscope', modelId)) return
+	settings.modelPrefs[modelId] = {
+		enabled: true,
+		selectedProvider: 'dashscope',
+	}
+}
+
 const RECOGNIZABLE_KEYS = [
 	'settingsSchemaVersion',
 	'outputDir',
@@ -550,6 +561,7 @@ export function migrateSettings(
 	migrateByteplusGroupId(settings, raw)
 	migrateProviderPrefs19(settings)
 	migrateProviderModelPrefs(settings, previousVersion)
+	migrateDashScopeWan27(settings, previousVersion)
 	settings.settingsSchemaVersion = CURRENT_SETTINGS_SCHEMA_VERSION
 
 	const valid = options.strict ? errors.length === 0 : true

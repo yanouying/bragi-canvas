@@ -50,6 +50,80 @@ export const qwenImageEditSpicy: ModelConfig = {
 	params: [],
 }
 
+export const wan27: ModelConfig = {
+	id: 'wan-2.7',
+	name: 'Wan 2.7',
+	type: 'video',
+	supportedProviders: {
+		dashscope: { apiModelId: 'wan-2.7' },
+	},
+	modes: [
+		'text-to-video',
+		'first-frame',
+		'first-last-frame',
+		'image-ref',
+		'video-ref',
+		'video-extend',
+		'video-edit',
+	],
+	params: [
+		{
+			id: 'resolution',
+			label: 'Resolution',
+			type: 'select',
+			options: [
+				{ label: '720P', value: '720P' },
+				{ label: '1080P', value: '1080P' },
+			],
+			default: '720P',
+		},
+		{
+			id: 'ratio',
+			label: 'Ratio',
+			type: 'select',
+			options: [
+				{ label: '16:9', value: '16:9' },
+				{ label: '9:16', value: '9:16' },
+				{ label: '1:1', value: '1:1' },
+				{ label: '4:3', value: '4:3' },
+				{ label: '3:4', value: '3:4' },
+			],
+			default: '16:9',
+		},
+		{
+			id: 'duration',
+			label: 'Duration',
+			type: 'range',
+			default: 5,
+			min: 2,
+			max: 15,
+			step: 1,
+			unit: 's',
+		},
+		{
+			id: 'prompt_extend',
+			label: 'Prompt Extend',
+			type: 'select',
+			options: [
+				{ label: 'On', value: 'true' },
+				{ label: 'Off', value: 'false' },
+			],
+			default: 'true',
+		},
+		{
+			id: 'audio_setting',
+			label: 'Edit Audio',
+			type: 'select',
+			modes: ['video-edit'],
+			options: [
+				{ label: 'Auto', value: 'auto' },
+				{ label: 'Original', value: 'origin' },
+			],
+			default: 'auto',
+		},
+	],
+}
+
 export const wan27I2vSpicy: ModelConfig = {
 	id: 'wan-2.7-i2v-spicy',
 	name: 'Wan 2.7 Spicy I2V',

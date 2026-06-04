@@ -38,6 +38,7 @@ import { validateTextInputs } from './models/text-input-capabilities'
 import { prepareTextInputs } from './text-input-prep'
 import { checkForPluginUpdate, markUpdatePrompted, shouldShowAutomaticUpdatePrompt, type AvailablePluginUpdate } from './update-check'
 import { UpdateReminderModal } from './ui/update-modal'
+import { dashScopeRegion } from './providers/dashscope'
 
 type SeedanceAssetProviderId = 'tokenrouter' | 'byteplus' | 'bytedance'
 
@@ -554,6 +555,7 @@ export default class BragiCanvas extends Plugin {
 			// Seedance can consume provider-specific asset:// IDs.
 			const isSeedanceModel = model.id.startsWith('seedance')
 			const isMuleRouterWan = activeProvider === 'mulerouter' && model.id === 'wan-2.7-i2v-spicy'
+			const isDashScopeWan = activeProvider === 'dashscope' && model.id === 'wan-2.7'
 			const supportsApimartVideoRef = activeProvider === 'apimart' && model.id === 'omni-flash-ext'
 			const isNativeSeedance = (activeProvider === 'bytedance' || activeProvider === 'byteplus') && isSeedanceModel
 			const hasSeedanceMediaRefs = uniqueImages.length > 0 || uniqueAudios.length > 0 || uniqueVideos.length > 0
@@ -586,7 +588,7 @@ export default class BragiCanvas extends Plugin {
 					const binary = await this.app.vault.adapter.readBinary(imgPath)
 					const ext = getFileExtension(imgPath, 'png')
 					refImages.push(await uploadRef(undefined, binary, `ref.${ext}`, imageMimeType(imgPath)))
-				} else if (isMuleRouterWan) {
+				} else if (isMuleRouterWan || isDashScopeWan) {
 					const binary = await this.app.vault.adapter.readBinary(imgPath)
 					const ext = getFileExtension(imgPath, 'png')
 					refImages.push(await uploadRef(undefined, binary, `ref.${ext}`, imageMimeType(imgPath)))
@@ -599,8 +601,8 @@ export default class BragiCanvas extends Plugin {
 				}
 			}
 
-			// Upload reference audios for Seedance and MuleRouter Wan I2V.
-			if ((supportsSeedanceUrlRefs || isMuleRouterWan) && uniqueAudios.length > 0) {
+			// Upload reference audios for providers/models that need public media URLs.
+			if ((supportsSeedanceUrlRefs || isMuleRouterWan || isDashScopeWan) && uniqueAudios.length > 0) {
 				if (supportsSeedanceUrlRefs && uniqueAudios.length > 3) {
 					throw new Error('Seedance supports up to 3 reference audio files.')
 				}
@@ -623,8 +625,8 @@ export default class BragiCanvas extends Plugin {
 			// Prepare reference videos for models/providers that can consume upstream video inputs.
 			// BytePlus Seedance videos must go through asset:// so face-containing clips are reviewed first.
 			if (model.type === 'video' && uniqueVideos.length > 0) {
-				if (mode === 'video-ref' && !supportsSeedanceUrlRefs && !supportsApimartVideoRef) {
-					throw new Error('Reference video is only available with Volcengine, BytePlus, TokenRouter, or Token360 Seedance, or APIMart Omni-Flash-Ext.')
+				if (mode === 'video-ref' && !supportsSeedanceUrlRefs && !supportsApimartVideoRef && !isDashScopeWan) {
+					throw new Error('Reference video is only available with Volcengine, BytePlus, TokenRouter, or Token360 Seedance, APIMart Omni-Flash-Ext, or DashScope Wan 2.7.')
 				}
 				if (supportsSeedanceUrlRefs && uniqueVideos.length > 3) {
 					throw new Error('Seedance supports up to 3 reference videos.')
@@ -635,7 +637,7 @@ export default class BragiCanvas extends Plugin {
 				if (isNativeSeedance && activeProvider === 'byteplus' && !bytePlusCreds) {
 					throw new Error('Add BytePlus access key and secret key in settings to use reference videos.')
 				}
-				const shouldUseVideos = supportsSeedanceUrlRefs || mode === 'video-extend' || mode === 'video-edit' || mode === 'video-ref'
+				const shouldUseVideos = supportsSeedanceUrlRefs || isDashScopeWan || mode === 'video-extend' || mode === 'video-edit' || mode === 'video-ref'
 				if (shouldUseVideos) {
 					for (const videoPath of uniqueVideos) {
 						if (isNativeSeedance && bytePlusCreds) {
@@ -768,10 +770,10 @@ export default class BragiCanvas extends Plugin {
 				let customVoiceRecord: CustomVoiceRecord | null = null
 				if (mode === 'tts' && voiceMode === 'reference') {
 					const refIndex = readVoiceRefAudioIndex(audioParams.voiceRefAudioIndex)
-					customVoiceRecord = await applyUpstreamVoiceReference(this.app, canvas, provider, activeProvider, audioModelId, getOrderedAudios(canvas, node), refIndex, audioParams)
+					customVoiceRecord = await applyUpstreamVoiceReference(this.app, canvas, provider, activeProvider, this.settings, audioModelId, getOrderedAudios(canvas, node), refIndex, audioParams)
 				} else if (mode === 'tts' && voiceMode === 'design') {
 					const promptIndex = readVoiceDesignTextIndex(audioParams.voiceDesignTextIndex)
-					customVoiceRecord = await applyVoiceDesign(provider, activeProvider, audioModelId, upstreamPrompts, promptIndex, finalPrompt, audioParams)
+					customVoiceRecord = await applyVoiceDesign(provider, activeProvider, this.settings, audioModelId, upstreamPrompts, promptIndex, finalPrompt, audioParams)
 				}
 				delete audioParams.voiceMode
 				delete audioParams.voiceRefAudioIndex
@@ -1237,8 +1239,8 @@ function modelIdForVoiceMode(model: PanelResult['model'], defaultModelId: string
 	return model.voiceConfig?.modelIds?.[voiceMode] || defaultModelId
 }
 
-function voiceCloneRegionForProvider(activeProvider: string): string {
-	return activeProvider === 'dashscope' ? 'cn-beijing' : 'global'
+function voiceCloneRegionForProvider(activeProvider: string, settings: BragiSettings): string {
+	return activeProvider === 'dashscope' ? dashScopeRegion(settings.providers.dashscopeBaseUrl) : 'global'
 }
 
 function reusableVoiceRecord(
@@ -1277,6 +1279,7 @@ async function applyUpstreamVoiceReference(
 	canvas: Canvas,
 	provider: AudioProvider,
 	activeProvider: string,
+	settings: BragiSettings,
 	modelId: string,
 	upstreamAudios: string[],
 	voiceRefAudioIndex: number,
@@ -1300,7 +1303,7 @@ async function applyUpstreamVoiceReference(
 
 	const binary = await app.vault.adapter.readBinary(sourcePath)
 	const sourceHash = await sha256Hex(binary)
-	const region = voiceCloneRegionForProvider(activeProvider)
+	const region = voiceCloneRegionForProvider(activeProvider, settings)
 	const existing = reusableVoiceRecord(audioNode, activeProvider, region, modelId, sourceHash)
 
 	if (existing) {
@@ -1349,6 +1352,7 @@ async function applyUpstreamVoiceReference(
 async function applyVoiceDesign(
 	provider: AudioProvider,
 	activeProvider: string,
+	settings: BragiSettings,
 	modelId: string,
 	upstreamPrompts: string[],
 	voiceDesignTextIndex: number,
@@ -1378,7 +1382,7 @@ async function applyVoiceDesign(
 	const record: CustomVoiceRecord = {
 		kind: 'design',
 		provider: activeProvider,
-		region: 'cn-beijing',
+		region: voiceCloneRegionForProvider(activeProvider, settings),
 		modelId,
 		promptHash,
 		voicePrompt,

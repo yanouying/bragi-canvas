@@ -1155,6 +1155,8 @@ body.bragi-annotation-mode-active .canvas-wrapper.bragi-annotation-mode .canvas-
 .bragi-bar-select {
 	-webkit-appearance: none;
 	appearance: none;
+	box-sizing: border-box;
+	height: 32px;
 	padding: 4px 20px 4px 6px;
 	border: 0;
 	border-radius: 4px;
@@ -1162,6 +1164,7 @@ body.bragi-annotation-mode-active .canvas-wrapper.bragi-annotation-mode .canvas-
 	box-shadow: none;
 	color: var(--bragi-text);
 	font-size: 13px;
+	line-height: 24px;
 	cursor: pointer;
 	outline: 0;
 }
@@ -1251,10 +1254,19 @@ body.bragi-annotation-mode-active .canvas-wrapper.bragi-annotation-mode .canvas-
 	position: relative;
 	display: inline-flex;
 	align-items: center;
+	box-sizing: border-box;
+	height: 32px;
+	margin: 0;
+	padding: 0;
 }
 
 .bragi-bar-range-menu > summary {
+	display: inline-flex;
+	align-items: center;
+	box-sizing: border-box;
+	min-height: 32px;
 	list-style: none;
+	margin: 0;
 }
 
 .bragi-bar-range-menu > summary::-webkit-details-marker {
@@ -1262,8 +1274,10 @@ body.bragi-annotation-mode-active .canvas-wrapper.bragi-annotation-mode .canvas-
 }
 
 .bragi-bar-range-btn {
+	box-sizing: border-box;
 	display: inline-flex;
 	align-items: center;
+	height: 32px;
 	max-width: 150px;
 	padding: 4px 20px 4px 8px;
 	border: 0;
@@ -1271,7 +1285,7 @@ body.bragi-annotation-mode-active .canvas-wrapper.bragi-annotation-mode .canvas-
 	background: transparent url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='rgba(0,0,0,0.4)' stroke-width='1' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 6px center;
 	color: var(--bragi-text);
 	font-size: 13px;
-	line-height: 1.2;
+	line-height: 24px;
 	box-shadow: none;
 	outline: 0;
 	cursor: pointer;

@@ -2,8 +2,9 @@ import { requestUrl } from 'obsidian'
 import { stringParam } from './params'
 import { uploadRef } from './upload'
 import type { TextGenProvider, TextGenResult } from './text-gen'
+import { DEFAULT_DASHSCOPE_BASE_URL, dashScopeUrl } from './dashscope'
 
-const MULTIMODAL_URL = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation'
+const MULTIMODAL_PATH = '/services/aigc/multimodal-generation/generation'
 
 const SYSTEM_PROMPT = `You are a helpful assistant on a visual canvas. Follow the user's instructions precisely.
 If the user asks you to produce multiple separate items (e.g. "split into 3 chapters", "give me 5 titles", "break this into sections"), output each item separated by a line containing only ---SPLIT--- on its own. Do NOT use ---SPLIT--- for any other purpose. If the output is a single piece of content, do not use ---SPLIT--- at all.`
@@ -66,9 +67,11 @@ async function buildContentParts(
 export class DashScopeTextProvider implements TextGenProvider {
 	name = 'DashScope'
 	private apiKey: string
+	private baseUrl: string
 
-	constructor(apiKey: string) {
+	constructor(apiKey: string, baseUrl = DEFAULT_DASHSCOPE_BASE_URL) {
 		this.apiKey = apiKey
+		this.baseUrl = baseUrl
 	}
 
 	async generateText(prompt: string, params?: Record<string, unknown>): Promise<TextGenResult> {
@@ -81,7 +84,7 @@ export class DashScopeTextProvider implements TextGenProvider {
 		const content = await buildContentParts(prompt, refImages, refVideos, refAudios, refPdfs)
 
 		const response = await requestUrl({
-			url: MULTIMODAL_URL,
+			url: dashScopeUrl(this.baseUrl, MULTIMODAL_PATH),
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',

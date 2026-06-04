@@ -30,7 +30,7 @@ const MODE_LABELS: Record<string, string> = {
 	'image-ref': 'Ref Image',
 	'first-last-frame': 'First + Last Frame',
 	'multi-image-ref': 'Multi Image Ref',
-	'video-ref': 'Reference video',
+	'video-ref': 'Ref Video',
 	'video-extend': 'Extend Video',
 	'video-edit': 'Edit Video',
 	'text-to-text': 'Text → Text',
@@ -71,6 +71,14 @@ function voiceDisplayLabel(
 
 function rangeParamValueLabel(param: ModelParam, value: string | number): string {
 	return `${value}${param.unit || ''}`
+}
+
+function paramVisibleForMode(param: ModelParam, mode: Mode | null): boolean {
+	return !param.modes || (!!mode && param.modes.includes(mode))
+}
+
+function paramsVisibleForMode(model: ModelConfig, mode: Mode | null): ModelParam[] {
+	return model.params.filter(param => paramVisibleForMode(param, mode))
 }
 
 function renderRangeParamDropdown(
@@ -646,7 +654,7 @@ export function showGenerateBar(
 	function rebuildParams() {
 		paramsEl.innerHTML = ''
 		if (!selectedModel) return
-		for (const param of selectedModel.params) {
+		for (const param of paramsVisibleForMode(selectedModel, selectedMode)) {
 			if (param.type === 'select' && param.options) {
 				// Pick mode-specific options if declared; otherwise the base list.
 				const effectiveOptions = (selectedMode && param.optionsByMode?.[selectedMode]) || param.options
@@ -750,6 +758,18 @@ export function showGenerateBar(
 				paramsEl.appendChild(input)
 			}
 		}
+	}
+
+	function currentVisibleParamValues(): Record<string, string | number> {
+		if (!selectedModel) return {}
+		const visibleIds = new Set(paramsVisibleForMode(selectedModel, selectedMode).map(param => param.id))
+		const result: Record<string, string | number> = {}
+		for (const [key, value] of Object.entries(paramValues)) {
+			if (visibleIds.has(key) || key === 'voiceLabel' || key === 'voiceMode' || key === 'voiceRefAudioIndex' || key === 'voiceDesignTextIndex') {
+				result[key] = value
+			}
+		}
+		return result
 	}
 
 	/**
@@ -1006,9 +1026,10 @@ export function showGenerateBar(
 
 			// Save to global memory
 			const lastKey = lastSelectionKey(currentType)
+			const submitParams = currentVisibleParamValues()
 			;(settings as unknown)[lastKey] = {
 				modelId: selectedModel.id,
-				params: { ...paramValues },
+				params: { ...submitParams },
 				batchCount,
 			}
 			onSaveSettings?.()
@@ -1018,7 +1039,7 @@ export function showGenerateBar(
 			const bragiLastGen = currentNodeData.bragiLastGen || currentNodeData.ovidLastGen || {}
 			bragiLastGen[currentType] = {
 				modelId: selectedModel.id,
-				params: { ...paramValues },
+				params: { ...submitParams },
 				batchCount,
 			}
 			// Write new key, drop the legacy one so it doesn't silently drift
@@ -1029,7 +1050,7 @@ export function showGenerateBar(
 			// Resolve active provider and API model ID
 			const { provider, apiModelId } = resolveProvider(selectedModel, settings)
 
-			onSubmit({ prompt, model: selectedModel, activeProvider: provider, apiModelId, mode: selectedMode, params: paramValues, batchCount })
+			onSubmit({ prompt, model: selectedModel, activeProvider: provider, apiModelId, mode: selectedMode, params: submitParams, batchCount })
 		})()
 	})
 
@@ -1212,7 +1233,7 @@ export function showBatchGenerateBar(
 	function rebuildParams() {
 		paramsEl.innerHTML = ''
 		if (!selectedModel) return
-		for (const param of selectedModel.params) {
+		for (const param of paramsVisibleForMode(selectedModel, selectedMode)) {
 			if (param.type === 'select' && param.options) {
 				const effectiveOptions = (selectedMode && param.optionsByMode?.[selectedMode]) || param.options
 				const currentValue = String(paramValues[param.id] ?? param.default)
@@ -1289,6 +1310,16 @@ export function showBatchGenerateBar(
 		}
 	}
 
+	function currentVisibleParamValues(): Record<string, string | number> {
+		if (!selectedModel) return {}
+		const visibleIds = new Set(paramsVisibleForMode(selectedModel, selectedMode).map(param => param.id))
+		const result: Record<string, string | number> = {}
+		for (const [key, value] of Object.entries(paramValues)) {
+			if (visibleIds.has(key) || key === 'voiceLabel') result[key] = value
+		}
+		return result
+	}
+
 	function rebuildModelList() {
 		modelSelect.innerHTML = ''
 		models = getModelsForType(currentType)
@@ -1352,9 +1383,10 @@ export function showBatchGenerateBar(
 
 		const batchCount = parseInt(batchSelect.value) || 1
 		const lastKey = lastSelectionKey(currentType)
+		const submitParams = currentVisibleParamValues()
 		;(settings as unknown)[lastKey] = {
 			modelId: selectedModel.id,
-			params: { ...paramValues },
+			params: { ...submitParams },
 			batchCount,
 		}
 		onSaveSettings?.()
@@ -1367,7 +1399,7 @@ export function showBatchGenerateBar(
 			activeProvider: provider,
 			apiModelId,
 			mode: selectedMode,
-			params: paramValues,
+			params: submitParams,
 			batchCount,
 		})
 	})

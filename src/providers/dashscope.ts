@@ -3,7 +3,9 @@ import { normalizePath, requestUrl } from 'obsidian'
 import type {
 	AudioProvider,
 	GenerateAudioResult,
+	GenerateVideoResult,
 	ListVoicesOptions,
+	VideoProvider,
 	VoiceCloneOptions,
 	VoiceCloneResult,
 	VoiceDesignOptions,
@@ -11,13 +13,44 @@ import type {
 	VoiceOption,
 } from './types'
 import { optionalStringParam, stringParam } from './params'
+import { uploadRef } from './upload'
 
-const BASE_URL = 'https://dashscope.aliyuncs.com/api/v1'
-const QWEN_TTS_URL = `${BASE_URL}/services/aigc/multimodal-generation/generation`
-const COSY_TTS_URL = `${BASE_URL}/services/audio/tts/SpeechSynthesizer`
-const CUSTOMIZATION_URL = `${BASE_URL}/services/audio/tts/customization`
+export const DEFAULT_DASHSCOPE_BASE_URL = 'https://dashscope.aliyuncs.com/api/v1'
+const QWEN_TTS_PATH = '/services/aigc/multimodal-generation/generation'
+const COSY_TTS_PATH = '/services/audio/tts/SpeechSynthesizer'
+const CUSTOMIZATION_PATH = '/services/audio/tts/customization'
+const VIDEO_SYNTHESIS_PATH = '/services/aigc/video-generation/video-synthesis'
+const TASK_PATH = '/tasks'
+const WAN27_T2V = 'wan2.7-t2v-2026-04-25'
+const WAN27_I2V = 'wan2.7-i2v-2026-04-25'
+const WAN27_R2V = 'wan2.7-r2v'
+const WAN27_VIDEOEDIT = 'wan2.7-videoedit'
+const VIDEO_DONE_STATUSES = new Set(['SUCCEEDED', 'SUCCESS', 'COMPLETED'])
+const VIDEO_FAILED_STATUSES = new Set(['FAILED', 'FAILURE', 'ERROR', 'CANCELED', 'CANCELLED', 'UNKNOWN'])
 
 type UnknownRecord = Record<string, unknown>
+
+export function normalizeDashScopeBaseUrl(baseUrl?: string): string {
+	const trimmed = (baseUrl || '').trim()
+	return (trimmed || DEFAULT_DASHSCOPE_BASE_URL).replace(/\/+$/, '')
+}
+
+export function dashScopeUrl(baseUrl: string | undefined, path: string): string {
+	const normalizedPath = path.startsWith('/') ? path : `/${path}`
+	return `${normalizeDashScopeBaseUrl(baseUrl)}${normalizedPath}`
+}
+
+export function dashScopeRegion(baseUrl?: string): string {
+	try {
+		const host = new URL(normalizeDashScopeBaseUrl(baseUrl)).hostname
+		const match = host.match(/\.([a-z]+-[a-z]+-\d+)\.maas\.aliyuncs\.com$/)
+		if (match?.[1]) return match[1]
+		if (host === 'dashscope.aliyuncs.com') return 'cn-beijing'
+		return host
+	} catch {
+		return 'cn-beijing'
+	}
+}
 
 function isRecord(value: unknown): value is UnknownRecord {
 	return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -147,6 +180,144 @@ function outputFilePath(outputDir: string, fileName: string): string {
 	return normalizePath(`${outputDirectoryPath(outputDir)}/${fileName}`)
 }
 
+function stringList(value: unknown): string[] {
+	return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+}
+
+function optionalBooleanParam(value: unknown): boolean | undefined {
+	if (typeof value === 'boolean') return value
+	if (typeof value === 'number') return value !== 0
+	if (typeof value !== 'string') return undefined
+	const normalized = value.trim().toLowerCase()
+	if (!normalized) return undefined
+	if (['false', '0', 'off', 'no'].includes(normalized)) return false
+	return true
+}
+
+function optionalNumberParam(value: unknown): number | undefined {
+	if (typeof value === 'number' && Number.isFinite(value)) return value
+	if (typeof value !== 'string') return undefined
+	const parsed = Number(value)
+	return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function boundedInt(value: unknown, fallback: number, min: number, max: number): number {
+	const parsed = optionalNumberParam(value)
+	const n = parsed === undefined ? fallback : Math.round(parsed)
+	return Math.min(Math.max(n, min), max)
+}
+
+function normalizeResolution(value: unknown): string {
+	const text = stringParam(value, '720P').trim().toUpperCase()
+	return text === '1080P' ? '1080P' : '720P'
+}
+
+function normalizeRatio(value: unknown): string | undefined {
+	const ratio = stringParam(value, '').trim()
+	return ['16:9', '9:16', '1:1', '4:3', '3:4'].includes(ratio) ? ratio : undefined
+}
+
+function isHttpUrl(value: string): boolean {
+	return /^https?:\/\//i.test(value)
+}
+
+function extensionForMime(mimeType: string, kind: 'image' | 'audio' | 'video'): string {
+	if (mimeType.includes('webp')) return 'webp'
+	if (mimeType.includes('bmp')) return 'bmp'
+	if (mimeType.includes('jpeg') || mimeType.includes('jpg')) return 'jpg'
+	if (mimeType.includes('png')) return 'png'
+	if (mimeType.includes('quicktime')) return 'mov'
+	if (mimeType.includes('webm')) return 'webm'
+	if (mimeType.includes('mp4')) return 'mp4'
+	if (mimeType.includes('wav')) return 'wav'
+	if (mimeType.includes('flac')) return 'flac'
+	if (mimeType.includes('aac')) return 'aac'
+	if (mimeType.includes('ogg')) return 'ogg'
+	if (mimeType.includes('opus')) return 'opus'
+	if (mimeType.includes('mpeg') || mimeType.includes('mp3')) return 'mp3'
+	return kind === 'video' ? 'mp4' : kind === 'audio' ? 'mp3' : 'png'
+}
+
+function dataUriToBytes(dataUri: string, kind: 'image' | 'audio' | 'video'): { bytes: Uint8Array; ext: string; mimeType: string } | null {
+	const match = dataUri.match(/^data:([^;]+);base64,(.+)$/)
+	if (!match) return null
+	const mimeType = match[1]
+	return {
+		bytes: Uint8Array.from(atob(match[2]), c => c.charCodeAt(0)),
+		ext: extensionForMime(mimeType, kind),
+		mimeType,
+	}
+}
+
+function copyToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+	return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+}
+
+function videoExtFromUrl(url: string): string {
+	const clean = url.split(/[?#]/)[0].toLowerCase()
+	if (clean.endsWith('.mov')) return 'mov'
+	if (clean.endsWith('.webm')) return 'webm'
+	return 'mp4'
+}
+
+function extractVideoTaskId(data: unknown): string | null {
+	return getStringAt(data, ['output', 'task_id']) || getStringAt(data, ['task_id'])
+}
+
+function extractVideoStatus(data: unknown): string {
+	return (
+		getStringAt(data, ['output', 'task_status'])
+		|| getStringAt(data, ['task_status'])
+		|| getStringAt(data, ['status'])
+		|| ''
+	).trim().toUpperCase()
+}
+
+function firstUrlInArray(value: unknown): string | null {
+	if (!Array.isArray(value)) return null
+	for (const item of value) {
+		if (typeof item === 'string' && isHttpUrl(item)) return item
+		if (isRecord(item)) {
+			const url = stringParam(item.url || item.video_url || item.file_url, '')
+			if (isHttpUrl(url)) return url
+		}
+	}
+	return null
+}
+
+function extractVideoUrl(json: unknown): string | null {
+	const paths = [
+		['output', 'video_url'],
+		['output', 'url'],
+		['output', 'video', 'url'],
+		['output', 'data', 'video_url'],
+		['output', 'data', 'url'],
+		['video_url'],
+		['url'],
+	]
+	for (const path of paths) {
+		const value = getStringAt(json, path)
+		if (value && isHttpUrl(value)) return value
+	}
+	return (
+		firstUrlInArray(getAt(json, ['output', 'results']))
+		|| firstUrlInArray(getAt(json, ['output', 'videos']))
+		|| firstUrlInArray(getAt(json, ['results']))
+		|| firstUrlInArray(getAt(json, ['videos']))
+	)
+}
+
+function videoFailureMessage(data: unknown): string {
+	return (
+		getStringAt(data, ['output', 'message'])
+		|| getStringAt(data, ['output', 'code'])
+		|| getStringAt(data, ['error', 'message'])
+		|| getStringAt(data, ['message'])
+		|| safePayloadSnippet(data)
+		|| 'Task failed'
+	)
+}
+
 function toVoiceOption(record: UnknownRecord, qwen: boolean, modelId: string): VoiceOption | null {
 	const id = qwen
 		? stringParam(record.voice, '')
@@ -262,6 +433,215 @@ function mergeVoices(voices: VoiceOption[]): VoiceOption[] {
 	return [...byId.values()]
 }
 
+type MediaKind = 'image' | 'audio' | 'video'
+
+interface Wan27Route {
+	model: string
+	input: UnknownRecord
+	parameters: UnknownRecord
+}
+
+export class DashScopeVideoProvider implements VideoProvider {
+	name = 'DashScope'
+
+	constructor(
+		private apiKey: string,
+		private app: App,
+		private outputDir: string,
+		private baseUrl = DEFAULT_DASHSCOPE_BASE_URL,
+	) {}
+
+	async generateVideo(prompt: string, params?: Record<string, unknown>): Promise<GenerateVideoResult> {
+		const route = await this.buildWan27Route(prompt, params || {})
+		const resp = await requestUrl({
+			url: dashScopeUrl(this.baseUrl, VIDEO_SYNTHESIS_PATH),
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${this.apiKey}`,
+				'X-DashScope-Async': 'enable',
+			},
+			body: JSON.stringify({
+				model: route.model,
+				input: route.input,
+				parameters: route.parameters,
+			}),
+			throw: false,
+		})
+
+		if (isInvalidApiKeyResponse(resp)) throw new Error(`DashScope auth: ${parseErr(resp) || 'invalid API key.'}`)
+		if (resp.status >= 400) throw new Error(`DashScope video: ${parseErr(resp) || `HTTP ${resp.status}`}`)
+
+		const taskId = extractVideoTaskId(resp.json)
+		if (!taskId) throw new Error(`DashScope video: task_id was not returned - ${safePayloadSnippet(resp.json)}`)
+		return { done: false, taskId }
+	}
+
+	async checkStatus(taskId: string): Promise<GenerateVideoResult> {
+		const resp = await requestUrl({
+			url: dashScopeUrl(this.baseUrl, `${TASK_PATH}/${encodeURIComponent(taskId)}`),
+			method: 'GET',
+			headers: { 'Authorization': `Bearer ${this.apiKey}` },
+			throw: false,
+		})
+
+		if (isInvalidApiKeyResponse(resp)) throw new Error(`DashScope auth: ${parseErr(resp) || 'invalid API key.'}`)
+		if (resp.status >= 400) throw new Error(`DashScope video: ${parseErr(resp) || `HTTP ${resp.status}`}`)
+
+		const payload: unknown = resp.json
+		const status = extractVideoStatus(payload)
+		const videoUrl = extractVideoUrl(payload)
+		if (VIDEO_DONE_STATUSES.has(status) || videoUrl) {
+			if (!videoUrl) throw new Error(`DashScope video: completed task has no video URL - ${safePayloadSnippet(payload)}`)
+			return { done: true, filePath: await this.downloadVideo(videoUrl) }
+		}
+		if (VIDEO_FAILED_STATUSES.has(status)) {
+			throw new Error(`DashScope video: ${videoFailureMessage(payload)}`)
+		}
+		return { done: false, taskId }
+	}
+
+	private async buildWan27Route(prompt: string, params: Record<string, unknown>): Promise<Wan27Route> {
+		const genMode = stringParam(params.genMode, 'text-to-video')
+		const modelId = stringParam(params.modelId, 'wan-2.7')
+		const refImages = stringList(params.refImages)
+		const refAudios = stringList(params.refAudios)
+		const refVideos = stringList(params.refVideos)
+
+		if (modelId === WAN27_VIDEOEDIT || genMode === 'video-edit') {
+			return this.buildWan27VideoEdit(prompt, params, refImages, refVideos)
+		}
+		if (modelId === WAN27_R2V || genMode === 'image-ref' || genMode === 'multi-image-ref' || genMode === 'video-ref') {
+			return this.buildWan27R2v(prompt, params, refImages, refVideos, refAudios)
+		}
+		if (modelId === WAN27_I2V || genMode === 'first-frame' || genMode === 'first-last-frame' || genMode === 'video-extend') {
+			return this.buildWan27I2v(prompt, params, genMode, refImages, refVideos, refAudios)
+		}
+		return this.buildWan27T2v(prompt, params, refAudios)
+	}
+
+	private async buildWan27T2v(prompt: string, params: Record<string, unknown>, refAudios: string[]): Promise<Wan27Route> {
+		const input: UnknownRecord = { prompt }
+		if (refAudios[0]) input.audio_url = await this.ensureUrl(refAudios[0], 'audio')
+		return {
+			model: WAN27_T2V,
+			input,
+			parameters: this.commonParameters(params, 15),
+		}
+	}
+
+	private async buildWan27I2v(
+		prompt: string,
+		params: Record<string, unknown>,
+		genMode: string,
+		refImages: string[],
+		refVideos: string[],
+		refAudios: string[],
+	): Promise<Wan27Route> {
+		const media: UnknownRecord[] = []
+		if (genMode === 'video-extend') {
+			if (!refVideos[0]) throw new Error('Wan 2.7 video extend requires one upstream video.')
+			media.push({ type: 'first_clip', url: await this.ensureUrl(refVideos[0], 'video') })
+			if (refImages[0]) media.push({ type: 'last_frame', url: await this.ensureUrl(refImages[0], 'image') })
+		} else {
+			if (!refImages[0]) throw new Error('Wan 2.7 image-to-video requires one upstream image.')
+			media.push({ type: 'first_frame', url: await this.ensureUrl(refImages[0], 'image') })
+			if (genMode === 'first-last-frame') {
+				if (!refImages[1]) throw new Error('Wan 2.7 first-last-frame mode requires two upstream images.')
+				media.push({ type: 'last_frame', url: await this.ensureUrl(refImages[1], 'image') })
+			}
+		}
+		if (refAudios[0]) media.push({ type: 'driving_audio', url: await this.ensureUrl(refAudios[0], 'audio') })
+		return {
+			model: WAN27_I2V,
+			input: { prompt, media },
+			parameters: this.commonParameters(params, 15),
+		}
+	}
+
+	private async buildWan27R2v(
+		prompt: string,
+		params: Record<string, unknown>,
+		refImages: string[],
+		refVideos: string[],
+		refAudios: string[],
+	): Promise<Wan27Route> {
+		const media: UnknownRecord[] = []
+		const imageMedia = await Promise.all(refImages.map(async url => ({ type: 'reference_image', url: await this.ensureUrl(url, 'image') })))
+		const videoMedia = await Promise.all(refVideos.map(async url => ({ type: 'reference_video', url: await this.ensureUrl(url, 'video') })))
+		const refs: UnknownRecord[] = [...imageMedia, ...videoMedia]
+		if (refs.length === 0) throw new Error('Wan 2.7 reference mode requires at least one upstream image or video.')
+		if (media.length + refs.length > 5) throw new Error('Wan 2.7 reference mode supports at most 5 media inputs.')
+		for (let i = 0; i < refs.length; i++) {
+			if (refAudios[i]) refs[i].reference_voice = await this.ensureUrl(refAudios[i], 'audio')
+		}
+		media.push(...refs)
+		return {
+			model: WAN27_R2V,
+			input: { prompt, media },
+			parameters: this.commonParameters(params, 10),
+		}
+	}
+
+	private async buildWan27VideoEdit(
+		prompt: string,
+		params: Record<string, unknown>,
+		refImages: string[],
+		refVideos: string[],
+	): Promise<Wan27Route> {
+		if (!refVideos[0]) throw new Error('Wan 2.7 VideoEdit requires one upstream video.')
+		if (refImages.length > 3) throw new Error('Wan 2.7 VideoEdit supports at most 3 reference images.')
+		const media: UnknownRecord[] = [
+			{ type: 'video', url: await this.ensureUrl(refVideos[0], 'video') },
+		]
+		for (const ref of refImages) {
+			media.push({ type: 'reference_image', url: await this.ensureUrl(ref, 'image') })
+		}
+		const parameters = this.commonParameters(params, 10)
+		const audioSetting = stringParam(params.audio_setting, '')
+		if (audioSetting === 'auto' || audioSetting === 'origin') parameters.audio_setting = audioSetting
+		return {
+			model: WAN27_VIDEOEDIT,
+			input: { prompt, media },
+			parameters,
+		}
+	}
+
+	private commonParameters(params: Record<string, unknown>, maxDuration: number): UnknownRecord {
+		const parameters: UnknownRecord = {
+			resolution: normalizeResolution(params.resolution),
+			duration: boundedInt(params.duration, 5, 2, maxDuration),
+			prompt_extend: optionalBooleanParam(params.prompt_extend) ?? true,
+			watermark: false,
+		}
+		const ratio = normalizeRatio(params.ratio || params.aspectRatio || params.aspect_ratio)
+		if (ratio) parameters.ratio = ratio
+		const negativePrompt = optionalStringParam(params.negative_prompt)
+		if (negativePrompt) parameters.negative_prompt = negativePrompt
+		return parameters
+	}
+
+	private async ensureUrl(ref: string, kind: MediaKind): Promise<string> {
+		if (isHttpUrl(ref)) return ref
+		if (ref.startsWith('asset://')) {
+			throw new Error('DashScope video does not support provider asset:// references; use URL-uploaded media.')
+		}
+		const decoded = dataUriToBytes(ref, kind)
+		if (!decoded) throw new Error(`DashScope video: unsupported reference ${kind} format`)
+		return uploadRef(undefined, copyToArrayBuffer(decoded.bytes), `dashscope-ref.${decoded.ext}`, decoded.mimeType)
+	}
+
+	private async downloadVideo(url: string): Promise<string> {
+		const resp = await requestUrl({ url })
+		const outputDir = outputDirectoryPath(this.outputDir)
+		const filePath = outputFilePath(this.outputDir, `dashscope_wan27_${Date.now()}.${videoExtFromUrl(url)}`)
+		const adapter = this.app.vault.adapter
+		if (!await adapter.exists(outputDir)) await adapter.mkdir(outputDir)
+		await adapter.writeBinary(filePath, resp.arrayBuffer)
+		return filePath
+	}
+}
+
 export class DashScopeAudioProvider implements AudioProvider {
 	name = 'DashScope'
 
@@ -269,6 +649,7 @@ export class DashScopeAudioProvider implements AudioProvider {
 		private apiKey: string,
 		private app: App,
 		private outputDir: string,
+		private baseUrl = DEFAULT_DASHSCOPE_BASE_URL,
 	) {}
 
 	async generateAudio(prompt: string, options: { mode: 'tts' | 'music' | 'sound-effect'; modelId?: string; [k: string]: unknown }): Promise<GenerateAudioResult> {
@@ -295,7 +676,7 @@ export class DashScopeAudioProvider implements AudioProvider {
 		}
 
 		const resp = await requestUrl({
-			url: qwen ? QWEN_TTS_URL : COSY_TTS_URL,
+			url: dashScopeUrl(this.baseUrl, qwen ? QWEN_TTS_PATH : COSY_TTS_PATH),
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -362,7 +743,7 @@ export class DashScopeAudioProvider implements AudioProvider {
 			}
 
 		const resp = await requestUrl({
-			url: CUSTOMIZATION_URL,
+			url: dashScopeUrl(this.baseUrl, CUSTOMIZATION_PATH),
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -407,7 +788,7 @@ export class DashScopeAudioProvider implements AudioProvider {
 			}
 
 		const resp = await requestUrl({
-			url: CUSTOMIZATION_URL,
+			url: dashScopeUrl(this.baseUrl, CUSTOMIZATION_PATH),
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -445,7 +826,7 @@ export class DashScopeAudioProvider implements AudioProvider {
 			: { action: 'list_voice', page_size: 100, page_index: 0 }
 
 		const resp = await requestUrl({
-			url: CUSTOMIZATION_URL,
+			url: dashScopeUrl(this.baseUrl, CUSTOMIZATION_PATH),
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',

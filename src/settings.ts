@@ -113,6 +113,7 @@ export interface BragiSettings {
 		lumaToken: string
 		xai: string
 		dashscope: string
+		dashscopeBaseUrl: string
 	}
 
 	// Per-model preferences
@@ -181,6 +182,7 @@ export const DEFAULT_SETTINGS: BragiSettings = {
 		lumaToken: '',
 		xai: '',
 		dashscope: '',
+		dashscopeBaseUrl: 'https://dashscope.aliyuncs.com/api/v1',
 	},
 	modelPrefs: {},
 	providerModelPrefs: {},
