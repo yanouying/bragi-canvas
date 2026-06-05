@@ -102,6 +102,19 @@ function requireLocalAdapter(app: App): FileSystemAdapter {
 	throw new Error('Bragi import/export requires a local (desktop) vault')
 }
 
+// Reveal a vault file in the OS file manager via Obsidian's built-in helper
+// (the same one core uses for "Show in system explorer"). Undocumented, so
+// guarded and best-effort.
+function revealInSystemExplorer(app: App, vaultRelativePath: string): void {
+	const reveal = (app as unknown as { showInFolder?: (path: string) => void }).showInFolder
+	if (typeof reveal !== 'function') return
+	try {
+		reveal.call(app, vaultRelativePath)
+	} catch (err) {
+		console.debug('Bragi export: reveal in file manager skipped', err)
+	}
+}
+
 function toError(value: unknown): Error {
 	return value instanceof Error ? value : new Error(typeof value === 'string' ? value : 'Unknown error')
 }
@@ -480,6 +493,7 @@ export async function exportCanvas(app: App, _settings: BragiSettings, canvas: C
 		notice.hide()
 		const sizeMB = (statSync(outAbs).size / 1024 / 1024).toFixed(1)
 		new Notice(`Exported ${basename(outRel)} — ${sizeMB} MB, ${added} file${added === 1 ? '' : 's'}`)
+		revealInSystemExplorer(app, outRel)
 	} catch (err: unknown) {
 		notice.hide()
 		new Notice(`Export failed: ${err.message}`)
