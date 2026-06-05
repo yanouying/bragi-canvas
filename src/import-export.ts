@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return -- Obsidian Canvas internals and provider payloads are runtime-shaped data that this plugin narrows at use sites. */
-import { App, FileSystemAdapter, Notice, TFile } from 'obsidian'
+import { App, FileSystemAdapter, Modal, Notice, Setting, TFile } from 'obsidian'
 import { Zip, ZipPassThrough, Unzip, UnzipInflate, unzipSync, strToU8, strFromU8 } from 'fflate'
 import { createReadStream, createWriteStream, existsSync, mkdirSync, statSync, unlinkSync } from 'fs'
 import { dirname as fsDirname } from 'path'
@@ -381,15 +381,163 @@ async function ensureVaultFolder(app: App, dir: string): Promise<void> {
 	}
 }
 
+// ── Export confirmation + destination picker ────────────────────────
+
+function formatBytes(n: number): string {
+	if (n < 1024) return `${n} B`
+	const units = ['KB', 'MB', 'GB', 'TB']
+	let value = n / 1024
+	let i = 0
+	while (value >= 1024 && i < units.length - 1) { value /= 1024; i++ }
+	return `${value >= 10 || i === 0 ? Math.round(value) : value.toFixed(1)} ${units[i]}`
+}
+
+function ensureBragiExt(path: string): string {
+	return /\.bragi$/i.test(path) ? path : `${path}.bragi`
+}
+
+interface SaveDialogOptions {
+	defaultPath?: string
+	filters?: Array<{ name: string; extensions: string[] }>
+}
+interface ElectronRemoteDialog {
+	showSaveDialogSync(options: SaveDialogOptions): string | undefined
+}
+interface ElectronShell {
+	showItemInFolder(fullPath: string): void
+}
+
+function windowRequire(moduleName: string): unknown {
+	const req = (window as unknown as { require?: (m: string) => unknown }).require
+	if (typeof req !== 'function') return null
+	try { return req(moduleName) } catch { return null }
+}
+
+/** Native Save dialog via Electron remote, if Obsidian exposes it (desktop). */
+function getSaveDialog(): ElectronRemoteDialog | null {
+	const remote = asRecord(windowRequire('@electron/remote'))
+		?? asRecord(asRecord(windowRequire('electron'))?.remote)
+	const dialog = remote?.dialog as ElectronRemoteDialog | undefined
+	return dialog && typeof dialog.showSaveDialogSync === 'function' ? dialog : null
+}
+
+function getElectronShell(): ElectronShell | null {
+	const shell = asRecord(windowRequire('electron'))?.shell as ElectronShell | undefined
+	return shell && typeof shell.showItemInFolder === 'function' ? shell : null
+}
+
+type ExportStats = {
+	canvasName: string
+	assetCount: number
+	missingCount: number
+	totalAssetBytes: number
+	estimatedZipBytes: number
+}
+
+type ExportDestination = { absPath: string; vaultRelative: string | null }
+
+/** Reveal the exported package in the OS file manager (absolute path preferred). */
+function revealExported(app: App, dest: ExportDestination): void {
+	const shell = getElectronShell()
+	if (shell) {
+		try { shell.showItemInFolder(dest.absPath); return } catch { /* fall back below */ }
+	}
+	if (dest.vaultRelative) revealInSystemExplorer(app, dest.vaultRelative)
+}
+
+class ExportConfirmModal extends Modal {
+	private resolved = false
+	private dest: ExportDestination
+
+	constructor(
+		app: App,
+		private stats: ExportStats,
+		defaultDest: ExportDestination,
+		private onResolve: (dest: ExportDestination | null) => void,
+	) {
+		super(app)
+		this.dest = defaultDest
+	}
+
+	private destLabel(): string {
+		return this.dest.vaultRelative ? `In vault: ${this.dest.vaultRelative}` : this.dest.absPath
+	}
+
+	override onOpen(): void {
+		const { contentEl } = this
+		contentEl.empty()
+		contentEl.createEl('h3', { text: 'Export canvas package' })
+
+		const info = contentEl.createDiv({ cls: 'bragi-export-summary' })
+		const addRow = (label: string, value: string) => {
+			const p = info.createEl('p')
+			p.createEl('strong', { text: `${label}: ` })
+			p.appendText(value)
+		}
+		addRow('Canvas', this.stats.canvasName)
+		addRow('Assets', String(this.stats.assetCount))
+		addRow('Assets size', formatBytes(this.stats.totalAssetBytes))
+		addRow('Estimated package', `~${formatBytes(this.stats.estimatedZipBytes)}`)
+		if (this.stats.missingCount > 0) {
+			addRow('Missing (will be skipped)', String(this.stats.missingCount))
+		}
+		if (this.stats.estimatedZipBytes > 1024 * 1024 * 1024) {
+			contentEl.createEl('p', {
+				text: 'This is a large package — packing may take a while and cannot be interrupted once started.',
+				cls: 'mod-warning',
+			})
+		}
+
+		const destSetting = new Setting(contentEl).setName('Save to').setDesc(this.destLabel())
+		const saveDialog = getSaveDialog()
+		if (saveDialog) {
+			destSetting.addButton(btn => btn
+				.setButtonText('Change…')
+				.onClick(() => {
+					const picked = saveDialog.showSaveDialogSync({
+						defaultPath: this.dest.absPath,
+						filters: [{ name: 'Bragi package', extensions: ['bragi'] }],
+					})
+					if (picked) {
+						this.dest = { absPath: ensureBragiExt(picked), vaultRelative: null }
+						destSetting.setDesc(this.destLabel())
+					}
+				}))
+		}
+
+		new Setting(contentEl)
+			.addButton(btn => btn.setButtonText('Cancel').onClick(() => this.finish(null)))
+			.addButton(btn => btn.setButtonText('Export').setCta().onClick(() => this.finish(this.dest)))
+	}
+
+	private finish(dest: ExportDestination | null): void {
+		if (this.resolved) return
+		this.resolved = true
+		this.onResolve(dest)
+		this.close()
+	}
+
+	override onClose(): void {
+		this.contentEl.empty()
+		if (!this.resolved) {
+			this.resolved = true
+			this.onResolve(null)
+		}
+	}
+}
+
+function confirmExport(app: App, stats: ExportStats, defaultDest: ExportDestination): Promise<ExportDestination | null> {
+	return new Promise(resolve => {
+		new ExportConfirmModal(app, stats, defaultDest, resolve).open()
+	})
+}
+
 // ── Export ──────────────────────────────────────────────────────────
 
 export async function exportCanvas(app: App, _settings: BragiSettings, canvas: Canvas): Promise<void> {
-	const notice = new Notice('Exporting canvas…', 0)
-
 	try {
 		const canvasFilePath = getCanvasFilePath(app)
 		if (!canvasFilePath) {
-			notice.hide()
 			new Notice('Open a canvas first')
 			return
 		}
@@ -402,7 +550,6 @@ export async function exportCanvas(app: App, _settings: BragiSettings, canvas: C
 
 		// Collect all file references
 		const fileRefs = collectFileRefs(cloned)
-		notice.setMessage(`Exporting ${fileRefs.length} assets…`)
 
 		// Build path mapping: vaultPath → packagePath
 		const pathMap = new Map<string, string>()
@@ -425,18 +572,45 @@ export async function exportCanvas(app: App, _settings: BragiSettings, canvas: C
 		// Rewrite paths in cloned data
 		rewritePaths(cloned, pathMap)
 
-		// Pick a collision-safe output path next to the canvas, then stream a ZIP
-		// straight to disk: assets are stored as raw binary entries (no base64),
-		// the canvas+metadata is one small JSON entry, and nothing is ever held
-		// whole in memory. This sidesteps V8's ~512MB string cap (the original
-		// "Invalid string length") and the ~2GB single-buffer cap.
+		// Pre-pass: stat assets (cheap, no reads) to summarize the package before
+		// committing to a long, uninterruptible pack.
+		let totalAssetBytes = 0
+		let presentCount = 0
+		for (const vaultPath of pathMap.keys()) {
+			const stat = await app.vault.adapter.stat(vaultPath)
+			if (stat && stat.type === 'file') {
+				totalAssetBytes += stat.size
+				presentCount++
+			}
+		}
+		const canvasBytes = strToU8(JSON.stringify(cloned)).length
+		// Stored ZIP: payload + small per-entry headers (~100 B) + EOCD.
+		const estimatedZipBytes = totalAssetBytes + canvasBytes + (presentCount + 1) * 120 + 64
+
+		// Default destination: collision-safe path next to the canvas in the vault.
 		const adapter = requireLocalAdapter(app)
 		const outDir = dirname(canvasFilePath)
-		let outRel = outDir ? `${outDir}/${canvasName}.bragi` : `${canvasName}.bragi`
-		for (let i = 2; await app.vault.adapter.exists(outRel); i++) {
-			outRel = outDir ? `${outDir}/${canvasName}_${i}.bragi` : `${canvasName}_${i}.bragi`
+		let defaultRel = outDir ? `${outDir}/${canvasName}.bragi` : `${canvasName}.bragi`
+		for (let i = 2; await app.vault.adapter.exists(defaultRel); i++) {
+			defaultRel = outDir ? `${outDir}/${canvasName}_${i}.bragi` : `${canvasName}_${i}.bragi`
 		}
-		const outAbs = adapter.getFullPath(outRel)
+		const defaultDest: ExportDestination = { absPath: adapter.getFullPath(defaultRel), vaultRelative: defaultRel }
+
+		const dest = await confirmExport(app, {
+			canvasName,
+			assetCount: presentCount,
+			missingCount: pathMap.size - presentCount,
+			totalAssetBytes,
+			estimatedZipBytes,
+		}, defaultDest)
+		if (!dest) return
+
+		const notice = new Notice('Exporting canvas…', 0)
+		// Stream a ZIP straight to disk: assets are stored as raw binary entries
+		// (no base64), the canvas+metadata is one small JSON entry, and nothing is
+		// ever held whole in memory — sidestepping V8's ~512MB string cap (the
+		// original "Invalid string length") and the ~2GB single-buffer cap.
+		const outAbs = dest.absPath
 
 		const ws = createWriteStream(outAbs)
 		let streamError: Error | null = null
@@ -467,7 +641,7 @@ export async function exportCanvas(app: App, _settings: BragiSettings, canvas: C
 				}
 				await pushStoreEntry(zipStream, ws, pkgPath, new Uint8Array(binary))
 				added++
-				notice.setMessage(`Packing assets… ${added}/${fileRefs.length}`)
+				notice.setMessage(`Packing assets… ${added}/${presentCount}`)
 			}
 
 			const metadata = {
@@ -487,16 +661,16 @@ export async function exportCanvas(app: App, _settings: BragiSettings, canvas: C
 		} catch (err) {
 			try { ws.destroy() } catch { /* already closed */ }
 			try { if (existsSync(outAbs)) unlinkSync(outAbs) } catch { /* best-effort cleanup */ }
+			notice.hide()
 			throw err
 		}
 
 		notice.hide()
 		const sizeMB = (statSync(outAbs).size / 1024 / 1024).toFixed(1)
-		new Notice(`Exported ${basename(outRel)} — ${sizeMB} MB, ${added} file${added === 1 ? '' : 's'}`)
-		revealInSystemExplorer(app, outRel)
+		new Notice(`Exported ${basename(outAbs)} — ${sizeMB} MB, ${added} file${added === 1 ? '' : 's'}`)
+		revealExported(app, dest)
 	} catch (err: unknown) {
-		notice.hide()
-		new Notice(`Export failed: ${err.message}`)
+		new Notice(`Export failed: ${toError(err).message}`)
 		console.error('Bragi export error:', err)
 	}
 }
