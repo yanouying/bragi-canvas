@@ -383,16 +383,15 @@ export const elevenLabsSFX: ModelConfig = {
 		{
 			id: 'duration',
 			label: 'Duration',
-			type: 'select',
-			options: [
-				{ label: '1s', value: '1' },
-				{ label: '3s', value: '3' },
-				{ label: '5s', value: '5' },
-				{ label: '10s', value: '10' },
-				{ label: '20s', value: '20' },
-				{ label: '30s', value: '30' },
-			],
-			default: '5',
+			type: 'range',
+			default: 5,
+			min: 0.5,
+			max: 30,
+			step: 0.5,
+			unit: 's',
+			providerOverrides: {
+				fal: { max: 22 },
+			},
 		},
 	],
 }

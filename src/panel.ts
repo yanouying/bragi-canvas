@@ -73,6 +73,37 @@ function rangeParamValueLabel(param: ModelParam, value: string | number): string
 	return `${value}${param.unit || ''}`
 }
 
+function applyProviderOverride(param: ModelParam, provider: string | null): ModelParam {
+	const override = provider ? param.providerOverrides?.[provider] : undefined
+	return override ? { ...param, ...override } : param
+}
+
+function normalizeNumericParamValue(param: ModelParam, value: unknown): number {
+	const raw = typeof value === 'number'
+		? value
+		: typeof value === 'string'
+			? parseFloat(value)
+			: NaN
+	const fallback = typeof param.default === 'number' ? param.default : parseFloat(String(param.default))
+	let next = Number.isFinite(raw)
+		? raw
+		: Number.isFinite(fallback)
+			? fallback
+			: param.min ?? 0
+	const min = param.min
+	const max = param.max
+	const step = param.step
+	if (min !== undefined) next = Math.max(min, next)
+	if (max !== undefined) next = Math.min(max, next)
+	if (step !== undefined && step > 0 && Number.isFinite(step)) {
+		const base = min ?? 0
+		next = base + Math.round((next - base) / step) * step
+		if (min !== undefined) next = Math.max(min, next)
+		if (max !== undefined) next = Math.min(max, next)
+	}
+	return Number(next.toFixed(6))
+}
+
 function paramVisibleForMode(param: ModelParam, mode: Mode | null): boolean {
 	return !param.modes || (!!mode && param.modes.includes(mode))
 }
@@ -104,7 +135,9 @@ function renderRangeParamDropdown(
 	range.min = String(param.min ?? 0)
 	range.max = String(param.max ?? 100)
 	range.step = String(param.step ?? 1)
-	range.value = String(paramValues[param.id] ?? param.default)
+	const initialValue = normalizeNumericParamValue(param, paramValues[param.id] ?? param.default)
+	range.value = String(initialValue)
+	paramValues[param.id] = initialValue
 	range.title = param.label
 
 	const valueLabel = createSpan()
@@ -117,7 +150,7 @@ function renderRangeParamDropdown(
 	}
 
 	range.addEventListener('input', () => {
-		paramValues[param.id] = parseFloat(range.value)
+		paramValues[param.id] = normalizeNumericParamValue(param, range.value)
 		updateLabel()
 	})
 
@@ -515,11 +548,15 @@ export function showGenerateBar(
 		const prev = { ...paramValues }
 		paramValues = {}
 		if (!selectedModel) return
-		for (const p of selectedModel.params) {
+		const { provider } = resolveProvider(selectedModel, settings)
+		for (const baseParam of selectedModel.params) {
+			const p = applyProviderOverride(baseParam, provider)
 			// Keep current value if same param exists and value is valid in new model
 			const canKeepDynamicVoice = preserveDynamicVoice && p.id === 'voice' && (p.options?.length || 0) === 0
 			if (prev[p.id] !== undefined && (canKeepDynamicVoice || p.options?.some(o => o.value === String(prev[p.id])))) {
 				paramValues[p.id] = prev[p.id]
+			} else if (prev[p.id] !== undefined && (p.type === 'range' || p.type === 'number')) {
+				paramValues[p.id] = normalizeNumericParamValue(p, prev[p.id])
 			} else {
 				paramValues[p.id] = p.default
 			}
@@ -654,7 +691,9 @@ export function showGenerateBar(
 	function rebuildParams() {
 		paramsEl.innerHTML = ''
 		if (!selectedModel) return
-		for (const param of paramsVisibleForMode(selectedModel, selectedMode)) {
+		const { provider } = resolveProvider(selectedModel, settings)
+		for (const baseParam of paramsVisibleForMode(selectedModel, selectedMode)) {
+			const param = applyProviderOverride(baseParam, provider)
 			if (param.type === 'select' && param.options) {
 				// Pick mode-specific options if declared; otherwise the base list.
 				const effectiveOptions = (selectedMode && param.optionsByMode?.[selectedMode]) || param.options
@@ -763,10 +802,15 @@ export function showGenerateBar(
 	function currentVisibleParamValues(): Record<string, string | number> {
 		if (!selectedModel) return {}
 		const visibleIds = new Set(paramsVisibleForMode(selectedModel, selectedMode).map(param => param.id))
+		const { provider } = resolveProvider(selectedModel, settings)
 		const result: Record<string, string | number> = {}
 		for (const [key, value] of Object.entries(paramValues)) {
 			if (visibleIds.has(key) || key === 'voiceLabel' || key === 'voiceMode' || key === 'voiceRefAudioIndex' || key === 'voiceDesignTextIndex') {
-				result[key] = value
+				const baseParam = selectedModel.params.find(param => param.id === key)
+				const param = baseParam ? applyProviderOverride(baseParam, provider) : null
+				result[key] = param && (param.type === 'range' || param.type === 'number')
+					? normalizeNumericParamValue(param, value)
+					: value
 			}
 		}
 		return result
@@ -1219,10 +1263,14 @@ export function showBatchGenerateBar(
 		const prev = { ...paramValues }
 		paramValues = {}
 		if (!selectedModel) return
-		for (const p of selectedModel.params) {
+		const { provider } = resolveProvider(selectedModel, settings)
+		for (const baseParam of selectedModel.params) {
+			const p = applyProviderOverride(baseParam, provider)
 			const canKeepDynamicVoice = preserveDynamicVoice && p.id === 'voice' && (p.options?.length || 0) === 0
 			if (prev[p.id] !== undefined && (canKeepDynamicVoice || p.options?.some(o => o.value === String(prev[p.id])))) {
 				paramValues[p.id] = prev[p.id]
+			} else if (prev[p.id] !== undefined && (p.type === 'range' || p.type === 'number')) {
+				paramValues[p.id] = normalizeNumericParamValue(p, prev[p.id])
 			} else {
 				paramValues[p.id] = p.default
 			}
@@ -1233,7 +1281,9 @@ export function showBatchGenerateBar(
 	function rebuildParams() {
 		paramsEl.innerHTML = ''
 		if (!selectedModel) return
-		for (const param of paramsVisibleForMode(selectedModel, selectedMode)) {
+		const { provider } = resolveProvider(selectedModel, settings)
+		for (const baseParam of paramsVisibleForMode(selectedModel, selectedMode)) {
+			const param = applyProviderOverride(baseParam, provider)
 			if (param.type === 'select' && param.options) {
 				const effectiveOptions = (selectedMode && param.optionsByMode?.[selectedMode]) || param.options
 				const currentValue = String(paramValues[param.id] ?? param.default)
@@ -1313,9 +1363,16 @@ export function showBatchGenerateBar(
 	function currentVisibleParamValues(): Record<string, string | number> {
 		if (!selectedModel) return {}
 		const visibleIds = new Set(paramsVisibleForMode(selectedModel, selectedMode).map(param => param.id))
+		const { provider } = resolveProvider(selectedModel, settings)
 		const result: Record<string, string | number> = {}
 		for (const [key, value] of Object.entries(paramValues)) {
-			if (visibleIds.has(key) || key === 'voiceLabel') result[key] = value
+			if (visibleIds.has(key) || key === 'voiceLabel') {
+				const baseParam = selectedModel.params.find(param => param.id === key)
+				const param = baseParam ? applyProviderOverride(baseParam, provider) : null
+				result[key] = param && (param.type === 'range' || param.type === 'number')
+					? normalizeNumericParamValue(param, value)
+					: value
+			}
 		}
 		return result
 	}

@@ -94,11 +94,19 @@ function buildAudioInput(prompt: string, params: Record<string, unknown>, apiMod
 		}
 	} else if (mode === 'sound-effect') {
 		input.text = prompt
-		if (params.duration) input.duration_seconds = parseFloat(params.duration)
+		const duration = numericParam(params.duration)
+		if (duration !== null) {
+			const maxDuration = apiModelId.includes('/elevenlabs/sound-effects/v2') ? 22 : 30
+			input.duration_seconds = clamp(duration, 0.5, maxDuration)
+		}
 	} else {
 		input.prompt = prompt
 	}
 	return input
+}
+
+function clamp(value: number, min: number, max: number): number {
+	return Math.min(Math.max(value, min), max)
 }
 
 function numericParam(value: unknown): number | null {
