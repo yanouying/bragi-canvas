@@ -13,6 +13,15 @@ export interface ParamOption {
 	value: string
 }
 
+export interface ModelParamProviderOverride {
+	options?: ParamOption[]
+	default?: string | number
+	min?: number
+	max?: number
+	step?: number
+	unit?: string
+}
+
 export interface ModelParam {
 	id: string
 	label: string
@@ -30,6 +39,11 @@ export interface ModelParam {
 	 * Used e.g. for xAI video where image-ref caps duration at 10s while others go to 15s.
 	 */
 	optionsByMode?: Record<string, ParamOption[]>
+	/**
+	 * Provider-specific parameter overrides for cases where wrappers expose a
+	 * narrower schema than the native upstream model.
+	 */
+	providerOverrides?: Record<string, ModelParamProviderOverride>
 	default: string | number
 	min?: number
 	max?: number

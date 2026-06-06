@@ -8,7 +8,7 @@ import type { PanelResult } from './panel'
 import { getModelById, getActiveProvider, getEnabledModels } from './models/index'
 import { getTextInputCapability, listSupportedInputLabels, listUnsupportedInputLabels } from './models/text-input-capabilities'
 import { getConnectedConfiguredProviderIds, resolveApiModelId } from './provider-model-prefs'
-import type { GenerationType, Mode } from './models/types'
+import type { GenerationType, Mode, ModelParam } from './models/types'
 import { getUpstreamInputs } from './edge-parser'
 import { getOrderedTextRefs } from './text-refs'
 import { getOrderedImages } from './ref-thumbnails'
@@ -35,6 +35,37 @@ type BragiCanvasNodeData = AllCanvasNodeData & {
 type SerializableEdge = CanvasEdgeData | CanvasEdge
 type FileView = { file?: TFile }
 type EdgeStore = Map<string, CanvasEdge> | CanvasEdge[]
+
+function applyProviderOverride(param: ModelParam, provider: string | null): ModelParam {
+	const override = provider ? param.providerOverrides?.[provider] : undefined
+	return override ? { ...param, ...override } : param
+}
+
+function normalizeNumericParamValue(param: ModelParam, value: unknown): number {
+	const raw = typeof value === 'number'
+		? value
+		: typeof value === 'string'
+			? parseFloat(value)
+			: NaN
+	const fallback = typeof param.default === 'number' ? param.default : parseFloat(String(param.default))
+	let next = Number.isFinite(raw)
+		? raw
+		: Number.isFinite(fallback)
+			? fallback
+			: param.min ?? 0
+	const min = param.min
+	const max = param.max
+	const step = param.step
+	if (min !== undefined) next = Math.max(min, next)
+	if (max !== undefined) next = Math.min(max, next)
+	if (step !== undefined && step > 0 && Number.isFinite(step)) {
+		const base = min ?? 0
+		next = base + Math.round((next - base) / step) * step
+		if (min !== undefined) next = Math.max(min, next)
+		if (max !== undefined) next = Math.min(max, next)
+	}
+	return Number(next.toFixed(6))
+}
 
 export interface McpToolContext {
 	getCanvas: GetCanvas
@@ -450,16 +481,19 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 								supportedInputs: listSupportedInputLabels(capability),
 								unsupportedInputs: listUnsupportedInputLabels(capability),
 							} : {}),
-							params: m.params.map(p => ({
-								id: p.id,
-								label: p.label,
-								type: p.type,
-								default: p.default,
-								...(p.modes ? { modes: p.modes } : {}),
-								...(p.options ? { options: p.options } : {}),
-								...(p.optionsByMode ? { optionsByMode: p.optionsByMode } : {}),
-								...(p.min !== undefined ? { min: p.min, max: p.max, step: p.step, unit: p.unit } : {}),
-							})),
+							params: m.params.map(param => {
+								const p = applyProviderOverride(param, provider)
+								return {
+									id: p.id,
+									label: p.label,
+									type: p.type,
+									default: p.default,
+									...(p.modes ? { modes: p.modes } : {}),
+									...(p.options ? { options: p.options } : {}),
+									...(p.optionsByMode ? { optionsByMode: p.optionsByMode } : {}),
+									...(p.min !== undefined ? { min: p.min, max: p.max, step: p.step, unit: p.unit } : {}),
+								}
+							}),
 						})
 					}
 				}
@@ -533,9 +567,13 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 
 				// Resolve params with defaults, but only for params visible in this mode.
 				const resolvedParams: Record<string, string | number> = { ...(params || {}) }
-				for (const p of model.params) {
-					if (p.modes && (!selectedMode || !p.modes.includes(selectedMode))) continue
-					resolvedParams[p.id] = resolvedParams[p.id] ?? p.default
+				for (const baseParam of model.params) {
+					if (baseParam.modes && (!selectedMode || !baseParam.modes.includes(selectedMode))) continue
+					const p = applyProviderOverride(baseParam, provider)
+					const value = resolvedParams[p.id] ?? p.default
+					resolvedParams[p.id] = (p.type === 'range' || p.type === 'number')
+						? normalizeNumericParamValue(p, value)
+						: value
 				}
 
 				const panelResult: PanelResult = {

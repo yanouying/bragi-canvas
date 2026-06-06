@@ -297,7 +297,8 @@ export class ElevenLabsProvider implements AudioProvider {
 
 		const duration = optionalStringParam(params?.duration)
 		if (duration) {
-			body.duration_seconds = parseFloat(duration)
+			const parsed = parseFloat(duration)
+			if (Number.isFinite(parsed)) body.duration_seconds = clamp(parsed, 0.5, 30)
 		}
 
 		const response = await requestUrl({
@@ -326,4 +327,8 @@ export class ElevenLabsProvider implements AudioProvider {
 		await adapter.writeBinary(filePath, data)
 		return { filePath }
 	}
+}
+
+function clamp(value: number, min: number, max: number): number {
+	return Math.min(Math.max(value, min), max)
 }
