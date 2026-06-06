@@ -1,10 +1,18 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return -- Obsidian Canvas internals and provider payloads are runtime-shaped data that this plugin narrows at use sites. */
-import { App, Notice, TFile } from 'obsidian'
+import { App, FileSystemAdapter, Modal, Notice, Setting, TFile } from 'obsidian'
+import { Zip, ZipPassThrough, Unzip, UnzipInflate, unzipSync, strToU8, strFromU8 } from 'fflate'
+import { createReadStream, createWriteStream, existsSync, mkdirSync, statSync, unlinkSync } from 'fs'
+import { dirname as fsDirname } from 'path'
 import type { BragiSettings } from './settings'
 import type { Canvas } from './types/canvas-internal'
 
 const PACKAGE_FORMAT = 'bragi-canvas-package'
-const PACKAGE_VERSION = 2
+// v3 is a ZIP container (assets stored as raw binary entries); v2 is the legacy
+// single-JSON format with base64-inlined assets. We write v3 and import both.
+const PACKAGE_VERSION = 3
+const PACKAGE_VERSION_LEGACY = 2
+// Name of the JSON metadata+canvas entry inside a v3 ZIP package.
+const PACKAGE_META_ENTRY = 'bragi-package.json'
 const TARGET_ASSET_DIR = '_bragi/assets'
 const RESERVED_ASSET_BASENAMES = new Set([
 	makeReservedAssetBasename('main', 'js'),
@@ -18,21 +26,17 @@ type CanvasData = {
 	[key: string]: unknown
 }
 
-type BragiPackageAsset = {
+// Unified, format-agnostic result of reading any bragi package: the canvas plus
+// each asset's raw binary (decoded from base64 for v2, or read straight out of
+// the ZIP for v3). Keeps the import pipeline identical across formats.
+type LoadedAsset = {
 	path: string
-	encoding: 'base64'
-	data: string
+	binary: Uint8Array
 }
 
-type BragiPackageFile = {
-	format: typeof PACKAGE_FORMAT
-	version: typeof PACKAGE_VERSION
-	exportDate: string
-	canvasName: string
-	nodeCount: number
-	assetCount: number
+type LoadedPackage = {
 	canvas: CanvasData
-	assets: BragiPackageAsset[]
+	assets: LoadedAsset[]
 }
 
 function generateId(): string {
@@ -70,28 +74,172 @@ function asCanvasData(value: unknown): CanvasData {
 	return value && typeof value === 'object' ? value as CanvasData : { nodes: [], edges: [] }
 }
 
-function toBase64(buffer: ArrayBuffer): string {
-	return Buffer.from(buffer).toString('base64')
+// Kept for importing legacy (v2) packages whose assets are base64-inlined.
+function fromBase64(data: string): Uint8Array {
+	return new Uint8Array(Buffer.from(data, 'base64'))
 }
 
-function fromBase64(data: string): ArrayBuffer {
-	const bytes = Buffer.from(data, 'base64')
+// Obsidian's adapter.writeBinary wants an ArrayBuffer; copy out the exact bytes
+// (the Uint8Array may be a view into a larger backing buffer).
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 	return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
 }
 
-function downloadBlob(fileName: string, data: BlobPart, mimeType: string): void {
-	const blob = new Blob([data], { type: mimeType })
-	const url = URL.createObjectURL(blob)
-	const link = createEl('a')
-	link.href = url
-	link.download = fileName
-	link.classList.add('bragi-hidden-download-link')
-	activeDocument.body.appendChild(link)
-	link.click()
-	window.setTimeout(() => {
-		link.remove()
-		URL.revokeObjectURL(url)
-	}, 1000)
+// A v3 package is a ZIP, which always starts with the local-file-header magic
+// "PK\x03\x04". A v2 package is JSON, starting with "{".
+function isZipPackage(bytes: Uint8Array): boolean {
+	return bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04
+}
+
+// Streaming export/import write straight to/from disk so we never hold the whole
+// package (or its base64) in memory — sidestepping both V8's ~512MB string cap
+// and the ~2GB single-Uint8Array cap, with no Worker dependency.
+const STREAM_CHUNK = 8 * 1024 * 1024
+
+function requireLocalAdapter(app: App): FileSystemAdapter {
+	const adapter = app.vault.adapter
+	if (adapter instanceof FileSystemAdapter) return adapter
+	throw new Error('Bragi import/export requires a local (desktop) vault')
+}
+
+// Reveal a vault file in the OS file manager via Obsidian's built-in helper
+// (the same one core uses for "Show in system explorer"). Undocumented, so
+// guarded and best-effort.
+function revealInSystemExplorer(app: App, vaultRelativePath: string): void {
+	const reveal = (app as unknown as { showInFolder?: (path: string) => void }).showInFolder
+	if (typeof reveal !== 'function') return
+	try {
+		reveal.call(app, vaultRelativePath)
+	} catch (err) {
+		console.debug('Bragi export: reveal in file manager skipped', err)
+	}
+}
+
+function toError(value: unknown): Error {
+	return value instanceof Error ? value : new Error(typeof value === 'string' ? value : 'Unknown error')
+}
+
+function concatU8(chunks: Uint8Array[]): Uint8Array {
+	let total = 0
+	for (const c of chunks) total += c.length
+	const out = new Uint8Array(total)
+	let off = 0
+	for (const c of chunks) { out.set(c, off); off += c.length }
+	return out
+}
+
+function whenDrained(stream: NodeJS.WritableStream & { writableNeedDrain?: boolean }): Promise<void> {
+	if (!stream.writableNeedDrain) return Promise.resolve()
+	return new Promise(resolve => stream.once('drain', () => resolve()))
+}
+
+/** Add one stored (uncompressed) ZIP entry, slicing large data + honoring backpressure. */
+async function pushStoreEntry(
+	zipStream: Zip,
+	out: NodeJS.WritableStream & { writableNeedDrain?: boolean },
+	name: string,
+	data: Uint8Array,
+): Promise<void> {
+	const entry = new ZipPassThrough(name)
+	zipStream.add(entry)
+	if (data.length === 0) {
+		entry.push(new Uint8Array(0), true)
+		return
+	}
+	for (let off = 0; off < data.length; off += STREAM_CHUNK) {
+		const end = Math.min(off + STREAM_CHUNK, data.length)
+		entry.push(data.subarray(off, end), end >= data.length)
+		await whenDrained(out)
+	}
+}
+
+type StreamImportResult = { canvas: CanvasData; pathMap: Map<string, string>; count: number }
+
+/**
+ * Stream-extract a v3 ZIP package directly from the picked file on disk, writing
+ * each asset entry to the vault as it arrives and buffering only the small
+ * metadata entry. Avoids reading the whole package into memory.
+ */
+async function streamImportZip(app: App, sourcePath: string, notice: Notice): Promise<StreamImportResult> {
+	const adapter = requireLocalAdapter(app)
+	mkdirSync(adapter.getFullPath(TARGET_ASSET_DIR), { recursive: true })
+
+	const pathMap = new Map<string, string>()
+	const metaChunks: Uint8Array[] = []
+	const assetWrites: Promise<void>[] = []
+	let count = 0
+	let failure: Error | null = null
+
+	const reserveAssetPath = (pkgName: string): string => {
+		const relativePart = validateAssetPackagePath(pkgName)
+		let vaultRel = `${TARGET_ASSET_DIR}/${relativePart}`
+		mkdirSync(fsDirname(adapter.getFullPath(vaultRel)), { recursive: true })
+		for (let i = 2; existsSync(adapter.getFullPath(vaultRel)); i++) {
+			vaultRel = `${TARGET_ASSET_DIR}/${withoutExt(relativePart)}_${i}${ext(relativePart)}`
+		}
+		return vaultRel
+	}
+
+	await new Promise<void>((resolve, reject) => {
+		const rs = createReadStream(sourcePath)
+		const unzip = new Unzip()
+		unzip.register(UnzipInflate)
+
+		unzip.onfile = (file) => {
+			if (file.name === PACKAGE_META_ENTRY) {
+				file.ondata = (err, chunk) => {
+					if (err) { failure = err; return }
+					if (chunk && chunk.length) metaChunks.push(chunk.slice())
+				}
+				file.start()
+				return
+			}
+
+			let vaultRel: string
+			try {
+				vaultRel = reserveAssetPath(file.name)
+			} catch {
+				// Unsafe/invalid entry: don't start() it, so fflate discards its data.
+				new Notice(`Skipped unsafe entry ${basename(file.name)}`)
+				return
+			}
+
+			const assetWs = createWriteStream(adapter.getFullPath(vaultRel))
+			assetWrites.push(new Promise<void>((res, rej) => {
+				assetWs.on('finish', () => res())
+				assetWs.on('error', rej)
+			}))
+			file.ondata = (err, chunk, final) => {
+				if (err) { failure = err; assetWs.destroy(err); return }
+				if (chunk && chunk.length) assetWs.write(Buffer.from(chunk))
+				if (final) assetWs.end()
+			}
+			pathMap.set(file.name, vaultRel)
+			count++
+			notice.setMessage(`Importing assets… ${count}`)
+			file.start()
+		}
+
+		rs.on('data', (c: Buffer) => {
+			try { unzip.push(new Uint8Array(c.buffer, c.byteOffset, c.byteLength), false) }
+			catch (err) { reject(err as Error) }
+		})
+		rs.on('end', () => {
+			try { unzip.push(new Uint8Array(0), true); resolve() }
+			catch (err) { reject(err as Error) }
+		})
+		rs.on('error', reject)
+	})
+
+	await Promise.all(assetWrites)
+	if (failure) throw toError(failure)
+
+	const metaBytes = concatU8(metaChunks)
+	if (metaBytes.length === 0) throw new Error("This doesn't look like a valid bragi package")
+	const pkg = asRecord(JSON.parse(strFromU8(metaBytes)) as unknown)
+	const canvas = validatePackageCanvas(pkg, [PACKAGE_VERSION])
+
+	return { canvas, pathMap, count }
 }
 
 function safePackagePath(vaultPath: string, assetBase: string): string {
@@ -128,42 +276,76 @@ function validateAssetPackagePath(pkgPath: string): string {
 	return relativePart
 }
 
-async function readBragiPackage(raw: string): Promise<{ canvas: CanvasData; assets: BragiPackageAsset[] }> {
-	const parsed = JSON.parse(raw) as unknown
-	const pkg = asRecord(parsed)
+/** Read any bragi package (v3 ZIP or legacy v2 JSON) into a unified shape. */
+function loadBragiPackage(bytes: Uint8Array): LoadedPackage {
+	return isZipPackage(bytes) ? loadZipPackage(bytes) : loadLegacyJsonPackage(bytes)
+}
 
-	if (!pkg || pkg.format !== PACKAGE_FORMAT || pkg.version !== PACKAGE_VERSION) {
+function validatePackageCanvas(pkg: Record<string, unknown> | null, allowedVersions: number[]): CanvasData {
+	if (!pkg || pkg.format !== PACKAGE_FORMAT || typeof pkg.version !== 'number' || !allowedVersions.includes(pkg.version)) {
 		throw new Error("This doesn't look like a valid bragi package")
 	}
-
 	const canvas = asCanvasData(pkg.canvas)
 	if (!Array.isArray(canvas.nodes) || !Array.isArray(canvas.edges)) {
 		throw new Error('This bragi package has a damaged canvas')
 	}
+	return JSON.parse(JSON.stringify(canvas)) as CanvasData
+}
 
-	const assetsValue = pkg.assets
+/** v3: ZIP with a JSON metadata entry + raw binary asset entries. */
+function loadZipPackage(bytes: Uint8Array): LoadedPackage {
+	let entries: Record<string, Uint8Array>
+	try {
+		entries = unzipSync(bytes)
+	} catch {
+		throw new Error('This bragi package is a damaged archive')
+	}
+
+	const metaBytes = entries[PACKAGE_META_ENTRY]
+	if (!metaBytes) {
+		throw new Error("This doesn't look like a valid bragi package")
+	}
+	const pkg = asRecord(JSON.parse(strFromU8(metaBytes)) as unknown)
+	const canvas = validatePackageCanvas(pkg, [PACKAGE_VERSION])
+
+	const assets: LoadedAsset[] = []
+	for (const name of Object.keys(entries)) {
+		if (name === PACKAGE_META_ENTRY) continue
+		validateAssetPackagePath(name)
+		assets.push({ path: name, binary: entries[name] })
+	}
+
+	return { canvas, assets }
+}
+
+/** Legacy v2: a single JSON document with base64-inlined assets. */
+function loadLegacyJsonPackage(bytes: Uint8Array): LoadedPackage {
+	const pkg = asRecord(JSON.parse(strFromU8(bytes)) as unknown)
+	const canvas = validatePackageCanvas(pkg, [PACKAGE_VERSION_LEGACY])
+
+	const assetsValue = pkg!.assets
 	if (assetsValue !== undefined && !Array.isArray(assetsValue)) {
 		throw new Error('This bragi package has a damaged asset list')
 	}
 
-	const assets: BragiPackageAsset[] = []
-	for (const item of assetsValue || []) {
+	const assets: LoadedAsset[] = []
+	for (const item of (assetsValue as unknown[]) || []) {
 		const asset = asRecord(item)
 		if (!asset || typeof asset.path !== 'string' || asset.encoding !== 'base64' || typeof asset.data !== 'string') {
 			throw new Error('This bragi package has a damaged asset')
 		}
 		validateAssetPackagePath(asset.path)
-		assets.push({ path: asset.path, encoding: 'base64', data: asset.data })
+		assets.push({ path: asset.path, binary: fromBase64(asset.data) })
 	}
 
-	return { canvas: JSON.parse(JSON.stringify(canvas)) as CanvasData, assets }
+	return { canvas, assets }
 }
 
 function chooseBragiPackageFile(): Promise<File | null> {
 	return new Promise((resolve) => {
 		const input = createEl('input')
 		input.type = 'file'
-		input.accept = '.bragi,application/json'
+		input.accept = '.bragi,application/zip,application/json'
 		input.classList.add('bragi-hidden')
 		activeDocument.body.appendChild(input)
 
@@ -199,15 +381,163 @@ async function ensureVaultFolder(app: App, dir: string): Promise<void> {
 	}
 }
 
+// ── Export confirmation + destination picker ────────────────────────
+
+function formatBytes(n: number): string {
+	if (n < 1024) return `${n} B`
+	const units = ['KB', 'MB', 'GB', 'TB']
+	let value = n / 1024
+	let i = 0
+	while (value >= 1024 && i < units.length - 1) { value /= 1024; i++ }
+	return `${value >= 10 || i === 0 ? Math.round(value) : value.toFixed(1)} ${units[i]}`
+}
+
+function ensureBragiExt(path: string): string {
+	return /\.bragi$/i.test(path) ? path : `${path}.bragi`
+}
+
+interface SaveDialogOptions {
+	defaultPath?: string
+	filters?: Array<{ name: string; extensions: string[] }>
+}
+interface ElectronRemoteDialog {
+	showSaveDialogSync(options: SaveDialogOptions): string | undefined
+}
+interface ElectronShell {
+	showItemInFolder(fullPath: string): void
+}
+
+function windowRequire(moduleName: string): unknown {
+	const req = (window as unknown as { require?: (m: string) => unknown }).require
+	if (typeof req !== 'function') return null
+	try { return req(moduleName) } catch { return null }
+}
+
+/** Native Save dialog via Electron remote, if Obsidian exposes it (desktop). */
+function getSaveDialog(): ElectronRemoteDialog | null {
+	const remote = asRecord(windowRequire('@electron/remote'))
+		?? asRecord(asRecord(windowRequire('electron'))?.remote)
+	const dialog = remote?.dialog as ElectronRemoteDialog | undefined
+	return dialog && typeof dialog.showSaveDialogSync === 'function' ? dialog : null
+}
+
+function getElectronShell(): ElectronShell | null {
+	const shell = asRecord(windowRequire('electron'))?.shell as ElectronShell | undefined
+	return shell && typeof shell.showItemInFolder === 'function' ? shell : null
+}
+
+type ExportStats = {
+	canvasName: string
+	assetCount: number
+	missingCount: number
+	totalAssetBytes: number
+	estimatedZipBytes: number
+}
+
+type ExportDestination = { absPath: string; vaultRelative: string | null }
+
+/** Reveal the exported package in the OS file manager (absolute path preferred). */
+function revealExported(app: App, dest: ExportDestination): void {
+	const shell = getElectronShell()
+	if (shell) {
+		try { shell.showItemInFolder(dest.absPath); return } catch { /* fall back below */ }
+	}
+	if (dest.vaultRelative) revealInSystemExplorer(app, dest.vaultRelative)
+}
+
+class ExportConfirmModal extends Modal {
+	private resolved = false
+	private dest: ExportDestination
+
+	constructor(
+		app: App,
+		private stats: ExportStats,
+		defaultDest: ExportDestination,
+		private onResolve: (dest: ExportDestination | null) => void,
+	) {
+		super(app)
+		this.dest = defaultDest
+	}
+
+	private destLabel(): string {
+		return this.dest.vaultRelative ? `In vault: ${this.dest.vaultRelative}` : this.dest.absPath
+	}
+
+	override onOpen(): void {
+		const { contentEl } = this
+		contentEl.empty()
+		contentEl.createEl('h3', { text: 'Export canvas package' })
+
+		const info = contentEl.createDiv({ cls: 'bragi-export-summary' })
+		const addRow = (label: string, value: string) => {
+			const p = info.createEl('p')
+			p.createEl('strong', { text: `${label}: ` })
+			p.appendText(value)
+		}
+		addRow('Canvas', this.stats.canvasName)
+		addRow('Assets', String(this.stats.assetCount))
+		addRow('Assets size', formatBytes(this.stats.totalAssetBytes))
+		addRow('Estimated package', `~${formatBytes(this.stats.estimatedZipBytes)}`)
+		if (this.stats.missingCount > 0) {
+			addRow('Missing (will be skipped)', String(this.stats.missingCount))
+		}
+		if (this.stats.estimatedZipBytes > 1024 * 1024 * 1024) {
+			contentEl.createEl('p', {
+				text: 'This is a large package — packing may take a while and cannot be interrupted once started.',
+				cls: 'mod-warning',
+			})
+		}
+
+		const destSetting = new Setting(contentEl).setName('Save to').setDesc(this.destLabel())
+		const saveDialog = getSaveDialog()
+		if (saveDialog) {
+			destSetting.addButton(btn => btn
+				.setButtonText('Change…')
+				.onClick(() => {
+					const picked = saveDialog.showSaveDialogSync({
+						defaultPath: this.dest.absPath,
+						filters: [{ name: 'Bragi package', extensions: ['bragi'] }],
+					})
+					if (picked) {
+						this.dest = { absPath: ensureBragiExt(picked), vaultRelative: null }
+						destSetting.setDesc(this.destLabel())
+					}
+				}))
+		}
+
+		new Setting(contentEl)
+			.addButton(btn => btn.setButtonText('Cancel').onClick(() => this.finish(null)))
+			.addButton(btn => btn.setButtonText('Export').setCta().onClick(() => this.finish(this.dest)))
+	}
+
+	private finish(dest: ExportDestination | null): void {
+		if (this.resolved) return
+		this.resolved = true
+		this.onResolve(dest)
+		this.close()
+	}
+
+	override onClose(): void {
+		this.contentEl.empty()
+		if (!this.resolved) {
+			this.resolved = true
+			this.onResolve(null)
+		}
+	}
+}
+
+function confirmExport(app: App, stats: ExportStats, defaultDest: ExportDestination): Promise<ExportDestination | null> {
+	return new Promise(resolve => {
+		new ExportConfirmModal(app, stats, defaultDest, resolve).open()
+	})
+}
+
 // ── Export ──────────────────────────────────────────────────────────
 
 export async function exportCanvas(app: App, _settings: BragiSettings, canvas: Canvas): Promise<void> {
-	const notice = new Notice('Exporting canvas…', 0)
-
 	try {
 		const canvasFilePath = getCanvasFilePath(app)
 		if (!canvasFilePath) {
-			notice.hide()
 			new Notice('Open a canvas first')
 			return
 		}
@@ -220,7 +550,6 @@ export async function exportCanvas(app: App, _settings: BragiSettings, canvas: C
 
 		// Collect all file references
 		const fileRefs = collectFileRefs(cloned)
-		notice.setMessage(`Exporting ${fileRefs.length} assets…`)
 
 		// Build path mapping: vaultPath → packagePath
 		const pathMap = new Map<string, string>()
@@ -243,50 +572,105 @@ export async function exportCanvas(app: App, _settings: BragiSettings, canvas: C
 		// Rewrite paths in cloned data
 		rewritePaths(cloned, pathMap)
 
-		const packageData: BragiPackageFile = {
-			format: PACKAGE_FORMAT,
-			version: PACKAGE_VERSION,
-			exportDate: new Date().toISOString(),
-			canvasName,
-			nodeCount: cloned.nodes?.length || 0,
-			assetCount: fileRefs.length,
-			canvas: cloned,
-			assets: [],
-		}
-
-		// Add asset files
-		let added = 0
-		for (const [vaultPath, pkgPath] of pathMap) {
-			try {
-				if (await app.vault.adapter.exists(vaultPath)) {
-					const binary = await app.vault.adapter.readBinary(vaultPath)
-					packageData.assets.push({
-						path: pkgPath,
-						encoding: 'base64',
-						data: toBase64(binary),
-					})
-					added++
-					notice.setMessage(`Reading assets… ${added}/${fileRefs.length}`)
-				} else {
-					new Notice(`Couldn't find ${basename(vaultPath)}, skipping`)
-				}
-			} catch {
-				new Notice(`Couldn't read ${basename(vaultPath)}, skipping`)
+		// Pre-pass: stat assets (cheap, no reads) to summarize the package before
+		// committing to a long, uninterruptible pack.
+		let totalAssetBytes = 0
+		let presentCount = 0
+		for (const vaultPath of pathMap.keys()) {
+			const stat = await app.vault.adapter.stat(vaultPath)
+			if (stat && stat.type === 'file') {
+				totalAssetBytes += stat.size
+				presentCount++
 			}
 		}
+		const canvasBytes = strToU8(JSON.stringify(cloned)).length
+		// Stored ZIP: payload + small per-entry headers (~100 B) + EOCD.
+		const estimatedZipBytes = totalAssetBytes + canvasBytes + (presentCount + 1) * 120 + 64
 
-		packageData.assetCount = added
-		notice.setMessage('Preparing package…')
-		const buffer = Buffer.from(JSON.stringify(packageData, null, 2), 'utf8')
-		const fileName = `${canvasName}.bragi`
-		downloadBlob(fileName, buffer, 'application/octet-stream')
+		// Default destination: collision-safe path next to the canvas in the vault.
+		const adapter = requireLocalAdapter(app)
+		const outDir = dirname(canvasFilePath)
+		let defaultRel = outDir ? `${outDir}/${canvasName}.bragi` : `${canvasName}.bragi`
+		for (let i = 2; await app.vault.adapter.exists(defaultRel); i++) {
+			defaultRel = outDir ? `${outDir}/${canvasName}_${i}.bragi` : `${canvasName}_${i}.bragi`
+		}
+		const defaultDest: ExportDestination = { absPath: adapter.getFullPath(defaultRel), vaultRelative: defaultRel }
+
+		const dest = await confirmExport(app, {
+			canvasName,
+			assetCount: presentCount,
+			missingCount: pathMap.size - presentCount,
+			totalAssetBytes,
+			estimatedZipBytes,
+		}, defaultDest)
+		if (!dest) return
+
+		const notice = new Notice('Exporting canvas…', 0)
+		// Stream a ZIP straight to disk: assets are stored as raw binary entries
+		// (no base64), the canvas+metadata is one small JSON entry, and nothing is
+		// ever held whole in memory — sidestepping V8's ~512MB string cap (the
+		// original "Invalid string length") and the ~2GB single-buffer cap.
+		const outAbs = dest.absPath
+
+		const ws = createWriteStream(outAbs)
+		let streamError: Error | null = null
+		const finished = new Promise<void>((resolve, reject) => {
+			ws.on('finish', () => resolve())
+			ws.on('error', (err) => reject(err))
+		})
+		const zipStream = new Zip((err, chunk, final) => {
+			if (err) { streamError = err; ws.destroy(err); return }
+			ws.write(Buffer.from(chunk))
+			if (final) ws.end()
+		})
+
+		let added = 0
+		try {
+			for (const [vaultPath, pkgPath] of pathMap) {
+				if (streamError) throw toError(streamError)
+				if (!await app.vault.adapter.exists(vaultPath)) {
+					new Notice(`Couldn't find ${basename(vaultPath)}, skipping`)
+					continue
+				}
+				let binary: ArrayBuffer
+				try {
+					binary = await app.vault.adapter.readBinary(vaultPath)
+				} catch {
+					new Notice(`Couldn't read ${basename(vaultPath)}, skipping`)
+					continue
+				}
+				await pushStoreEntry(zipStream, ws, pkgPath, new Uint8Array(binary))
+				added++
+				notice.setMessage(`Packing assets… ${added}/${presentCount}`)
+			}
+
+			const metadata = {
+				format: PACKAGE_FORMAT,
+				version: PACKAGE_VERSION,
+				exportDate: new Date().toISOString(),
+				canvasName,
+				nodeCount: cloned.nodes?.length || 0,
+				assetCount: added,
+				canvas: cloned,
+			}
+			notice.setMessage('Finalizing package…')
+			await pushStoreEntry(zipStream, ws, PACKAGE_META_ENTRY, strToU8(JSON.stringify(metadata)))
+			zipStream.end()
+			await finished
+			if (streamError) throw toError(streamError)
+		} catch (err) {
+			try { ws.destroy() } catch { /* already closed */ }
+			try { if (existsSync(outAbs)) unlinkSync(outAbs) } catch { /* best-effort cleanup */ }
+			notice.hide()
+			throw err
+		}
 
 		notice.hide()
-		const sizeMB = (buffer.byteLength / 1024 / 1024).toFixed(1)
-		new Notice(`Exported ${fileName} — ${sizeMB} MB, ${added} file${added === 1 ? '' : 's'}`)
+		const sizeMB = (statSync(outAbs).size / 1024 / 1024).toFixed(1)
+		new Notice(`Exported ${basename(outAbs)} — ${sizeMB} MB, ${added} file${added === 1 ? '' : 's'}`)
+		revealExported(app, dest)
 	} catch (err: unknown) {
-		notice.hide()
-		new Notice(`Export failed: ${err.message}`)
+		new Notice(`Export failed: ${toError(err).message}`)
 		console.error('Bragi export error:', err)
 	}
 }
@@ -308,8 +692,13 @@ export async function importCanvas(
 			return
 		}
 
-		const packageFile = await readBragiPackage(await selectedFile.text())
-		const importedData = packageFile.canvas
+		// Peek the first 4 bytes to detect a v3 ZIP vs legacy v2 JSON without
+		// reading the whole file. A v3 ZIP picked from disk is stream-extracted
+		// (no whole-file load); legacy JSON (always < the old ~512MB cap) falls
+		// back to a bounded whole-file read.
+		const head = new Uint8Array(await selectedFile.slice(0, 4).arrayBuffer())
+		const sourcePath = (selectedFile as { path?: string }).path
+		const canStream = isZipPackage(head) && !!sourcePath && app.vault.adapter instanceof FileSystemAdapter
 
 		// Determine target asset directory
 		let targetCanvasDir: string
@@ -342,34 +731,45 @@ export async function importCanvas(
 		notice.setMessage('Importing assets…')
 		const pathMap = new Map<string, string>()
 		let importedFileCount = 0
+		let importedData: CanvasData
 
 		await ensureVaultFolder(app, TARGET_ASSET_DIR)
 
-		for (const asset of packageFile.assets) {
-			try {
-				const relativePart = validateAssetPackagePath(asset.path)
-				let vaultPath = `${TARGET_ASSET_DIR}/${relativePart}`
+		if (canStream) {
+			const result = await streamImportZip(app, sourcePath, notice)
+			importedData = result.canvas
+			for (const [pkgPath, vaultPath] of result.pathMap) pathMap.set(pkgPath, vaultPath)
+			importedFileCount = result.count
+		} else {
+			// Whole-file fallback: legacy v2 JSON, or a v3 ZIP whose on-disk path
+			// is unavailable (bounded by the same memory limits as before).
+			const loaded = loadBragiPackage(new Uint8Array(await selectedFile.arrayBuffer()))
+			importedData = loaded.canvas
+			for (const asset of loaded.assets) {
+				try {
+					const relativePart = validateAssetPackagePath(asset.path)
+					let vaultPath = `${TARGET_ASSET_DIR}/${relativePart}`
 
-				// Ensure subdirectory exists
-				const parentDir = dirname(vaultPath)
-				await ensureVaultFolder(app, parentDir)
+					// Ensure subdirectory exists
+					const parentDir = dirname(vaultPath)
+					await ensureVaultFolder(app, parentDir)
 
-				// Handle filename collision
-				if (await app.vault.adapter.exists(vaultPath)) {
-					const base = withoutExt(vaultPath)
-					const extension = ext(vaultPath)
-					let i = 2
-					while (await app.vault.adapter.exists(`${base}_${i}${extension}`)) i++
-					vaultPath = `${base}_${i}${extension}`
+					// Handle filename collision
+					if (await app.vault.adapter.exists(vaultPath)) {
+						const base = withoutExt(vaultPath)
+						const extension = ext(vaultPath)
+						let i = 2
+						while (await app.vault.adapter.exists(`${base}_${i}${extension}`)) i++
+						vaultPath = `${base}_${i}${extension}`
+					}
+
+					await app.vault.adapter.writeBinary(vaultPath, toArrayBuffer(asset.binary))
+					pathMap.set(asset.path, vaultPath)
+					importedFileCount++
+					notice.setMessage(`Importing assets… ${importedFileCount}/${loaded.assets.length}`)
+				} catch (err: unknown) {
+					new Notice(`Couldn't import ${basename(asset.path)}: ${err.message}`)
 				}
-
-				const binary = fromBase64(asset.data)
-				await app.vault.adapter.writeBinary(vaultPath, binary)
-				pathMap.set(asset.path, vaultPath)
-				importedFileCount++
-				notice.setMessage(`Importing assets… ${importedFileCount}/${packageFile.assets.length}`)
-			} catch (err: unknown) {
-				new Notice(`Couldn't import ${basename(asset.path)}: ${err.message}`)
 			}
 		}
 
@@ -400,6 +800,8 @@ export async function importCanvas(
 				edges: [...(existingData.edges || []), ...(importedData.edges || [])],
 			})
 			void canvas.requestSave()
+			// importData updates the data model but doesn't repaint on its own.
+			try { void canvas.requestFrame() } catch (err) { console.debug('Bragi import: frame refresh skipped', err) }
 
 			notice.hide()
 			new Notice(`Added ${importedData.nodes?.length || 0} node${(importedData.nodes?.length || 0) === 1 ? '' : 's'} and ${importedFileCount} file${importedFileCount === 1 ? '' : 's'}`)
