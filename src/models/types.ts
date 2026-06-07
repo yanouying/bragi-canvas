@@ -20,6 +20,8 @@ export interface ModelParamProviderOverride {
 	max?: number
 	step?: number
 	unit?: string
+	/** Hide this param entirely for the provider (e.g. a wrapper that omits it). */
+	hidden?: boolean
 }
 
 export interface ModelParam {
@@ -57,6 +59,27 @@ export interface ModelParam {
  */
 export interface ProviderConfig {
 	apiModelId: string
+	/**
+	 * This provider routes the model's modes to multiple upstream model IDs
+	 * internally (e.g. DashScope Wan 2.7, DashScope voice). The catalog
+	 * `apiModelId` is a display-only umbrella; routing lives in the provider.
+	 * Marking aggregated locks the API-model-id editor (a single editable id
+	 * would be meaningless / could corrupt routing).
+	 */
+	aggregated?: boolean
+	/**
+	 * Opt-in: expose the API-model-id pencil editor for this provider×model.
+	 * Defaults to false — most models show a static, non-editable id. Use for
+	 * providers that accept arbitrary upstream model ids (e.g. BytePlus C-Dance).
+	 * Ignored when `aggregated` is true.
+	 */
+	editableApiModelId?: boolean
+	/**
+	 * Restrict this provider to a subset of the model's `modes`. Omit to inherit
+	 * all of the model's modes. Used when a provider exposes only part of an
+	 * aggregated model (e.g. MuleRouter only offers Wan 2.7 first-frame i2v).
+	 */
+	modes?: Mode[]
 }
 
 export interface ModelConfig {

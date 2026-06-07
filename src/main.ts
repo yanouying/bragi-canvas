@@ -554,7 +554,7 @@ export default class BragiCanvas extends Plugin {
 			} else {
 			// Seedance can consume provider-specific asset:// IDs.
 			const isSeedanceModel = model.id.startsWith('seedance')
-			const isMuleRouterWan = activeProvider === 'mulerouter' && model.id === 'wan-2.7-i2v-spicy'
+			const isMuleRouterWan = activeProvider === 'mulerouter' && model.id === 'wan-2.7'
 			const isDashScopeWan = activeProvider === 'dashscope' && model.id === 'wan-2.7'
 			const supportsApimartVideoRef = activeProvider === 'apimart' && model.id === 'omni-flash-ext'
 			const isNativeSeedance = (activeProvider === 'bytedance' || activeProvider === 'byteplus') && isSeedanceModel
