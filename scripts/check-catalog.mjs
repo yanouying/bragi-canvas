@@ -16,7 +16,7 @@ const entry = `
 import { ALL_MODELS } from '../src/models/index.ts'
 import { PROVIDERS } from '../src/providers/registry.ts'
 import { validateCatalog } from '../src/models/validate-catalog.ts'
-export const errors = validateCatalog(ALL_MODELS, PROVIDERS.map(p => p.id))
+export const errors = validateCatalog(ALL_MODELS, PROVIDERS.map(p => ({ id: p.id, defaultRefDelivery: p.defaultRefDelivery })))
 export const modelCount = ALL_MODELS.length
 `
 

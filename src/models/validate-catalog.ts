@@ -1,4 +1,12 @@
-import type { ModelConfig, Mode } from './types'
+import type { ModelConfig, Mode, RefDeliverySpec, RefModality } from './types'
+
+export interface ProviderForValidation {
+	id: string
+	defaultRefDelivery?: RefDeliverySpec
+}
+
+const REF_MODALITIES: RefModality[] = ['image', 'video', 'audio', 'pdf']
+const NATIVE_ASSET_PROVIDERS = new Set(['byteplus', 'token360', 'tokenrouter'])
 
 /**
  * Static, no-network validation of the model/provider catalog. Run by
@@ -6,9 +14,10 @@ import type { ModelConfig, Mode } from './types'
  * compliant with the integration standard. Returns a list of human-readable
  * error strings (empty when the catalog is valid).
  */
-export function validateCatalog(models: ModelConfig[], providerIds: string[]): string[] {
+export function validateCatalog(models: ModelConfig[], providers: ProviderForValidation[]): string[] {
 	const errors: string[] = []
-	const providerSet = new Set(providerIds)
+	const providerSet = new Set(providers.map(p => p.id))
+	const providerDefaults = new Map(providers.map(p => [p.id, p.defaultRefDelivery]))
 	const seenIds = new Set<string>()
 
 	for (const model of models) {
@@ -73,6 +82,19 @@ export function validateCatalog(models: ModelConfig[], providerIds: string[]): s
 			&& (!!model.voiceConfig?.modelIds || !!(model.voiceConfig?.clone || model.voiceConfig?.design))
 		if (needsAggregatedMarker && !dashscope?.aggregated) {
 			errors.push(`${where}: DashScope voice model with clone/design/modelIds must set supportedProviders.dashscope.aggregated = true`)
+		}
+
+		// Reference-media delivery: any resolved native_asset must name a real native asset provider.
+		for (const [providerId, cfg] of providerEntries) {
+			const perProvider = providerDefaults.get(providerId)
+			for (const modality of REF_MODALITIES) {
+				const delivery = cfg.refDelivery?.[modality] ?? perProvider?.[modality]
+				if (delivery !== 'native_asset') continue
+				const nativeProvider = cfg.refDelivery?.nativeAssetProvider ?? perProvider?.nativeAssetProvider
+				if (!nativeProvider || !NATIVE_ASSET_PROVIDERS.has(nativeProvider)) {
+					errors.push(`${where} provider "${providerId}": refDelivery.${modality} is native_asset but nativeAssetProvider is missing/invalid`)
+				}
+			}
 		}
 	}
 

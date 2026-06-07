@@ -15,6 +15,9 @@ const scriptsDir = path.dirname(fileURLToPath(import.meta.url))
 const entry = `
 import { ALL_MODELS, getProviderModes, isAggregated } from '../src/models/index.ts'
 import { PROVIDERS, getProvider } from '../src/providers/registry.ts'
+import { getRefDelivery } from '../src/provider-model-prefs.ts'
+
+const REF_MODALITY_FOR_TYPE = { image: ['image'], video: ['image', 'video', 'audio'], text: ['image', 'video', 'audio', 'pdf'], audio: ['audio'] }
 
 // Mirrors panel.ts / mcp-tool-registry.ts exactly.
 function applyProviderOverride(param, provider) {
@@ -94,6 +97,10 @@ for (const model of ALL_MODELS) {
 			}
 		}
 
+		const delivery = (REF_MODALITY_FOR_TYPE[model.type] || [])
+			.map(m => \`\${m}:\${getRefDelivery(model, providerId, m).delivery}\`)
+			.join(' ')
+
 		rows.push({
 			model: model.id,
 			type: model.type,
@@ -102,6 +109,7 @@ for (const model of ALL_MODELS) {
 			aggregated: !!cfg.aggregated,
 			editable,
 			modes: modes.join('|') || '(none)',
+			delivery,
 		})
 	}
 }
@@ -149,6 +157,7 @@ try {
 		for (const r of rs) {
 			const flags = [r.aggregated ? 'aggregated' : null, r.editable ? 'editable-id' : 'locked-id'].filter(Boolean).join(', ')
 			console.log(`    ${r.provider.padEnd(14)} id=${r.apiModelId.padEnd(34)} modes=${r.modes}  (${flags})`)
+			console.log(`    ${' '.repeat(14)} delivery: ${r.delivery}`)
 		}
 	}
 
