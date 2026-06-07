@@ -258,8 +258,9 @@ export const PROVIDERS: ProviderSpec[] = [
 			{ key: 'klingSk', label: 'Secret Key', placeholder: 'SK', type: 'password' },
 		],
 		isConfigured: (s) => !!(s.providers.klingAk && s.providers.klingSk),
-		// Kling sends the reference frame as plain base64 in the JSON body.
-		defaultRefDelivery: { image: 'inline' },
+		// Kling image2video accepts a public image URL (verified live) — relay avoids
+		// bloating the JSON body with base64. stripDataUriPrefix passes a URL through unchanged.
+		defaultRefDelivery: { image: 'relay' },
 		makeVideo: ({ settings, app, outputDir }) =>
 			new KlingProvider(settings.providers.klingAk, settings.providers.klingSk, app, outputDir),
 		// Kling uses JWT with HMAC-SHA256; auth is complex. Skip network test for now — Save will fail fast at first use.
