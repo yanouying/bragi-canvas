@@ -306,6 +306,10 @@ function buildVideoBody(modelId: string, prompt: string, params: Record<string, 
 		if (resolution) metadata.resolution = resolution
 		if (params.generate_audio !== undefined) metadata.generate_audio = params.generate_audio !== 'false'
 		body.metadata = metadata
+		// Reference-to-video: the gateway reads the top-level `images` array (plural) and
+		// converts each entry to an Ark `content[].image_url`. Without this, reference
+		// images are silently dropped and seedance runs as pure text-to-video.
+		if (imageUrls.length) body.images = imageUrls
 	} else {
 		if (imageUrls[0]) body.image = imageUrls[0]
 		if (ratio) body.aspect_ratio = ratio
