@@ -29,6 +29,7 @@ import { startAttachmentRedirect } from './attachment-redirect'
 import { openImageAnnotationTool } from './image-annotations'
 import { openVideoEditTool } from './video-edit'
 import { ensureBytePlusAsset, getBytePlusAssetCreds } from './byteplus-asset-flow'
+import { ensureSvNewApiAsset, getSvNewApiAssetCreds, SvNewApiAssetUnsupportedError } from './svnewapi-asset-flow'
 import { ensureTokenRouterModelArkAsset, getTokenRouterModelArkCreds } from './tokenrouter-asset-flow'
 import { ensureToken360Asset, getToken360AssetCreds } from './token360-asset-flow'
 import { splitImageNodeIntoTiles } from './grid-split-flow'
@@ -607,9 +608,18 @@ export default class BragiCanvas extends Plugin {
 			const supportsSeedanceUrlRefs = supportsSeedanceAssetRefs
 				|| (activeProvider === 'tokenrouter' && isSeedanceModel)
 				|| (activeProvider === 'token360' && isSeedanceModel)
+				// svnewapi seedance (byteplus-seedance-2 / Ark) accepts public ref URLs for
+				// image/audio/video, which the gateway turns into Ark content[] roles.
+				|| (activeProvider === 'svnewapi' && isSeedanceModel)
 			const assetIdMap = supportsSeedanceAssetRefs ? getAssetIds(canvas, node, activeProvider) : {}
 			const token360AssetCreds = (activeProvider === 'token360' && isSeedanceModel && uniqueImages.length > 0)
 				? getToken360AssetCreds(this)
+				: null
+			// svnewapi seedance: register face-bearing refs (image/video) through the
+			// gateway asset library so real-person/live-action refs are reviewed at
+			// registration and referenced as asset:// during generation.
+			const svNewApiAssetCreds = (activeProvider === 'svnewapi' && isSeedanceModel && hasSeedanceMediaRefs)
+				? getSvNewApiAssetCreds(this)
 				: null
 			for (const imgPath of uniqueImages) {
 				if (bytePlusCreds) {
@@ -621,6 +631,16 @@ export default class BragiCanvas extends Plugin {
 					refImages.push(await ensureToken360Asset(this, canvas, imgPath, token360AssetCreds))
 				} else if (assetIdMap[imgPath]) {
 					refImages.push(`asset://${assetIdMap[imgPath]}`)
+				} else if (svNewApiAssetCreds) {
+					try {
+						refImages.push(await ensureSvNewApiAsset(this, canvas, imgPath, apiModelId, svNewApiAssetCreds))
+					} catch (e) {
+						if (e instanceof SvNewApiAssetUnsupportedError) {
+							refImages.push(await this.prepareReferenceMedia(activeProvider, model, 'image', imgPath))
+						} else {
+							throw e
+						}
+					}
 				} else {
 					// Delivery (relay vs inline/passthrough) is declared per provider×model in the catalog.
 					refImages.push(await this.prepareReferenceMedia(activeProvider, model, 'image', imgPath))
@@ -667,6 +687,16 @@ export default class BragiCanvas extends Plugin {
 							refVideos.push(await ensureBytePlusAsset(this, canvas, videoPath, bytePlusCreds))
 						} else if (tokenRouterModelArkCreds) {
 							refVideos.push(await ensureTokenRouterModelArkAsset(this, canvas, videoPath, tokenRouterModelArkCreds))
+						} else if (svNewApiAssetCreds) {
+							try {
+								refVideos.push(await ensureSvNewApiAsset(this, canvas, videoPath, apiModelId, svNewApiAssetCreds))
+							} catch (e) {
+								if (e instanceof SvNewApiAssetUnsupportedError) {
+									refVideos.push(await this.prepareReferenceMedia(activeProvider, model, 'video', videoPath))
+								} else {
+									throw e
+								}
+							}
 						} else {
 							refVideos.push(await this.prepareReferenceMedia(activeProvider, model, 'video', videoPath))
 						}
