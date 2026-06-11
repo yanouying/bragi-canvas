@@ -152,10 +152,14 @@ function extractFailure(data: unknown, fallback: string): string {
 	return fallback
 }
 
-async function uploadRefImage(label: string, ref: string): Promise<string> {
-	if (isHttpUrl(ref)) return ref
+// Reference media is delivered to the gateway as public URLs or provider asset:// ids.
+// http(s) inputs and asset:// refs pass through unchanged (asset:// is produced by the
+// gateway asset-registration flow, see svnewapi-asset-flow.ts); data URIs (any modality
+// — image/audio/video) are uploaded to the relay.
+async function uploadRefMedia(label: string, ref: string): Promise<string> {
+	if (isHttpUrl(ref) || ref.startsWith('asset://')) return ref
 	const decoded = dataUriToBytes(ref)
-	if (!decoded) throw new Error(`${label}: unsupported reference image format`)
+	if (!decoded) throw new Error(`${label}: unsupported reference media format`)
 	return uploadRef(undefined, copyToArrayBuffer(decoded.bytes), `ref.${decoded.ext}`, decoded.mimeType)
 }
 
@@ -240,8 +244,12 @@ export class SvNewApiVideoProvider implements VideoProvider {
 		if (!modelId) throw new Error('SV NewAPI video: modelId required')
 
 		const refImages: string[] = Array.isArray(params?.refImages) ? params.refImages as string[] : []
-		const imageUrls = await Promise.all(refImages.map(ref => uploadRefImage('SV NewAPI video', ref)))
-		const body = buildVideoBody(modelId, prompt, params || {}, imageUrls)
+		const refAudios: string[] = Array.isArray(params?.refAudios) ? params.refAudios as string[] : []
+		const refVideos: string[] = Array.isArray(params?.refVideos) ? params.refVideos as string[] : []
+		const imageUrls = await Promise.all(refImages.map(ref => uploadRefMedia('SV NewAPI video', ref)))
+		const audioUrls = await Promise.all(refAudios.map(ref => uploadRefMedia('SV NewAPI video', ref)))
+		const videoUrls = await Promise.all(refVideos.map(ref => uploadRefMedia('SV NewAPI video', ref)))
+		const body = buildVideoBody(modelId, prompt, params || {}, imageUrls, audioUrls, videoUrls)
 
 		const resp = await requestUrl({
 			url: `${this.baseUrl}/v1/videos`,
@@ -290,10 +298,20 @@ export class SvNewApiVideoProvider implements VideoProvider {
 
 /**
  * The gateway forwards to different upstreams that disagree on where params live:
- * Seedance (byteplus) reads ratio/duration/watermark from a `metadata` object; the
- * fal-routed models (kling/grok/veo) take a top-level `image` plus top-level params.
+ * Seedance (byteplus, Ark) reads ratio/duration/watermark from a `metadata` object and
+ * builds an Ark `content[]` from the top-level `images`/`audios`/`videos` arrays (each
+ * tagged with a reference role). The fal-routed models (kling/grok/veo/sora) take the
+ * top-level `images` array plus top-level params; the gateway picks the fal sub-endpoint
+ * by input shape (e.g. grok: 2+ images -> reference-to-video, a video -> extend-video).
  */
-function buildVideoBody(modelId: string, prompt: string, params: Record<string, unknown>, imageUrls: string[]): JsonRecord {
+function buildVideoBody(
+	modelId: string,
+	prompt: string,
+	params: Record<string, unknown>,
+	imageUrls: string[],
+	audioUrls: string[],
+	videoUrls: string[],
+): JsonRecord {
 	const body: JsonRecord = { model: modelId, prompt }
 	const ratio = optionalString(params.ratio || params.aspect_ratio || params.aspectRatio)
 	const duration = optionalString(params.duration || params.durationSeconds)
@@ -306,8 +324,17 @@ function buildVideoBody(modelId: string, prompt: string, params: Record<string, 
 		if (resolution) metadata.resolution = resolution
 		if (params.generate_audio !== undefined) metadata.generate_audio = params.generate_audio !== 'false'
 		body.metadata = metadata
+		// The gateway converts each entry to an Ark content[] reference part
+		// (image_url/reference_image, audio_url/reference_audio, video_url/reference_video).
+		// Without these, refs are dropped and seedance runs as pure text-to-video.
+		if (imageUrls.length) body.images = imageUrls
+		if (audioUrls.length) body.audios = audioUrls
+		if (videoUrls.length) body.videos = videoUrls
 	} else {
-		if (imageUrls[0]) body.image = imageUrls[0]
+		// Send the full ordered images array (plural) so the gateway can do first-frame,
+		// first-last-frame, or multi-image reference modes; `videos` enables video-extend.
+		if (imageUrls.length) body.images = imageUrls
+		if (videoUrls.length) body.videos = videoUrls
 		if (ratio) body.aspect_ratio = ratio
 		if (duration && duration !== '-1') body.duration = duration
 		if (resolution) body.resolution = resolution
