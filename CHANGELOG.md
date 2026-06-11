@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.26.0
+
+- Added Kling V3 Motion Control mode for character image plus reference motion video generation on the native Kling provider.
+- Added APIMart support for Kling V3 Motion Control through the `kling-v3-motion-control` model path.
+- Added Motion Control UI handling, including automatic mode selection for one image plus one video, Orientation and Audio controls, and hidden duration/aspect ratio controls for this mode.
+- Routed Kling Motion Control reference videos through the relay and added polling for the native `/v1/videos/motion-control` endpoint.
+- Restricted non-motion Kling providers to their supported modes so fal, TokenRouter, and SV NewAPI do not expose Motion Control.
+- Bumped the plugin version to `1.26.0`.
+
 ## 1.25.0
 
 - Expanded SV NewAPI reference media support so Seedance routes image, audio, and video refs through top-level gateway arrays for text-to-video, first-frame, image-ref, and video-ref modes.
