@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.25.0
+
+- Expanded SV NewAPI reference media support so Seedance routes image, audio, and video refs through top-level gateway arrays for text-to-video, first-frame, image-ref, and video-ref modes.
+- Enabled SV NewAPI Grok video modes for text-to-video, image-ref, and video-extend flows.
+- Generalized SV NewAPI provider media upload handling across image, audio, and video refs, preserving HTTP(S) and `asset://` refs when possible.
+- Added SV NewAPI gateway asset registration via `/v1/assets`, including per-node cache validation, polling, `asset://` reuse, and graceful fallback when registration is unsupported.
+- Fixed SV NewAPI Seedance reference image routing by sending refs through top-level `images`.
+- Bumped the plugin version to `1.25.0`.
+
 ## 1.24.0
 
 - Added the provider integration standard: provider/model differences are now declared in the catalog, including aggregated providers, editable API model IDs, provider-specific modes, parameter overrides, and reference-media delivery behavior.
