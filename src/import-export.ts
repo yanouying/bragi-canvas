@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return -- Obsidian Canvas internals and provider payloads are runtime-shaped data that this plugin narrows at use sites. */
 import { App, FileSystemAdapter, Modal, Notice, Setting, TFile } from 'obsidian'
 import { Zip, ZipPassThrough, Unzip, UnzipInflate, unzipSync, strToU8, strFromU8 } from 'fflate'
+import type { AsyncFlateStreamHandler } from 'fflate'
 import { createReadStream, createWriteStream, existsSync, mkdirSync, statSync, unlinkSync } from 'fs'
 import { dirname as fsDirname } from 'path'
 import type { BragiSettings } from './settings'
@@ -187,10 +188,11 @@ async function streamImportZip(app: App, sourcePath: string, notice: Notice): Pr
 
 		unzip.onfile = (file) => {
 			if (file.name === PACKAGE_META_ENTRY) {
-				file.ondata = (err, chunk) => {
+				const onMetadataChunk: AsyncFlateStreamHandler = (err, chunk) => {
 					if (err) { failure = err; return }
 					if (chunk && chunk.length) metaChunks.push(chunk.slice())
 				}
+				file.ondata = onMetadataChunk
 				file.start()
 				return
 			}

@@ -19,6 +19,7 @@ const AUDIO_EXTS = /\.(mp3|wav|flac)$/i
 const VIDEO_EXTS = /\.(mp4|mov)$/i
 
 type AssetType = 'Image' | 'Audio' | 'Video'
+type JsonRecord = Record<string, unknown>
 
 export interface SvNewApiAssetCreds {
 	baseUrl: string
@@ -28,6 +29,22 @@ export interface SvNewApiAssetCreds {
 // Thrown when the gateway/channel does not support asset registration (HTTP 501).
 // The caller may fall back to sending the public reference URL.
 export class SvNewApiAssetUnsupportedError extends Error {}
+
+function asRecord(value: unknown): JsonRecord | null {
+	return value && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : null
+}
+
+function stringValue(value: unknown, fallback = ''): string {
+	if (typeof value === 'string') return value
+	if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+	return fallback
+}
+
+function gatewayErrorMessage(json: unknown, text: string, fallback: string): string {
+	const body = asRecord(json)
+	const error = asRecord(body?.error)
+	return stringValue(error?.message || body?.error || body?.message || text.substring(0, 200), fallback)
+}
 
 function normalizeBaseUrl(value: string | undefined): string {
 	const s = (value || '').trim()
@@ -85,8 +102,7 @@ function clearCachedAssetId(node: CanvasNode): void {
 
 interface GatewayResp {
 	status: number
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	json: any
+	json: unknown
 	text: string
 }
 
@@ -110,19 +126,22 @@ async function createGatewayAsset(creds: SvNewApiAssetCreds, model: string, url:
 		throw new SvNewApiAssetUnsupportedError('gateway/channel does not support asset registration')
 	}
 	if (r.status < 200 || r.status >= 300) {
-		throw new Error(`SV NewAPI asset register failed: ${r.json?.error || r.text?.substring(0, 200) || `HTTP ${r.status}`}`)
+		throw new Error(`SV NewAPI asset register failed: ${gatewayErrorMessage(r.json, r.text, `HTTP ${r.status}`)}`)
 	}
-	const id = r.json?.id
+	const body = asRecord(r.json)
+	const id = stringValue(body?.id, '')
 	if (!id) throw new Error('SV NewAPI asset register: no id in response')
-	return { id, status: r.json?.status || 'Processing' }
+	return { id, status: stringValue(body?.status, 'Processing') }
 }
 
 async function getGatewayAssetStatus(creds: SvNewApiAssetCreds, model: string, id: string): Promise<{ status: string; failedReason?: string }> {
 	const r = await postJson(creds, '/v1/assets/status', { model, id })
 	if (r.status < 200 || r.status >= 300) {
-		throw new Error(`SV NewAPI asset status failed: ${r.json?.error || `HTTP ${r.status}`}`)
+		throw new Error(`SV NewAPI asset status failed: ${gatewayErrorMessage(r.json, r.text, `HTTP ${r.status}`)}`)
 	}
-	return { status: r.json?.status || 'Unknown', failedReason: r.json?.failed_reason }
+	const body = asRecord(r.json)
+	const failedReason = stringValue(body?.failed_reason, '')
+	return { status: stringValue(body?.status, 'Unknown'), failedReason: failedReason || undefined }
 }
 
 async function waitForActive(creds: SvNewApiAssetCreds, model: string, id: string): Promise<void> {

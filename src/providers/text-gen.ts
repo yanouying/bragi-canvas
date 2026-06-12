@@ -476,6 +476,21 @@ function headerValue(headers: Record<string, string> | undefined, name: string):
 	return undefined
 }
 
+function readGeminiFile(data: unknown): { uri: string; name: string; state: string } | null {
+	const body = asRecord(data)
+	const file = asRecord(body?.file)
+	const uri = stringParam(file?.uri, '').trim()
+	const name = stringParam(file?.name, '').trim()
+	if (!uri || !name) return null
+	return { uri, name, state: stringParam(file?.state, '') }
+}
+
+function readGeminiState(data: unknown, fallback: string): string {
+	const body = asRecord(data)
+	const file = asRecord(body?.file)
+	return stringParam(file?.state || body?.state, fallback)
+}
+
 /**
  * Upload bytes to the Gemini Files API (resumable) and return the resulting
  * `files/...` URI, waiting until the file is ACTIVE (video/audio need server-side
@@ -507,8 +522,9 @@ async function uploadToGeminiFiles(apiKey: string, bytes: ArrayBuffer, mimeType:
 		body: bytes,
 		throw: false,
 	})
-	const file = fin.json?.file
-	if (!file?.uri || !file?.name) throw new Error(`Gemini Files API: upload failed (HTTP ${fin.status})`)
+	const finJson: unknown = fin.json
+	const file = readGeminiFile(finJson)
+	if (!file) throw new Error(`Gemini Files API: upload failed (HTTP ${fin.status})`)
 
 	// Images are ACTIVE immediately; video/audio go through PROCESSING.
 	let state: string = file.state
@@ -520,7 +536,8 @@ async function uploadToGeminiFiles(apiKey: string, bytes: ArrayBuffer, mimeType:
 			method: 'GET',
 			throw: false,
 		})
-		state = check.json?.state || state
+		const checkJson: unknown = check.json
+		state = readGeminiState(checkJson, state)
 	}
 	if (state === 'FAILED') throw new Error('Gemini Files API: file processing failed')
 	return file.uri
