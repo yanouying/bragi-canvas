@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.26.1
+
+- Fixed Obsidian review source warnings by typing the fflate stream callback used during `.bragi` ZIP import.
+- Tightened Gemini Files API response parsing to avoid unsafe file/state response access.
+- Tightened SV NewAPI gateway asset flow response parsing and error extraction without `any` response access.
+- Bumped the plugin version to `1.26.1`.
+
 ## 1.26.0
 
 - Added Kling V3 Motion Control mode for character image plus reference motion video generation on the native Kling provider.
