@@ -48,6 +48,20 @@ function optionalString(value: unknown): string | undefined {
 	return text || undefined
 }
 
+function numericParam(value: unknown): number | undefined {
+	if (typeof value === 'number' && Number.isFinite(value)) return value
+	if (typeof value !== 'string' || !value.trim()) return undefined
+	const parsed = parseFloat(value)
+	return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function booleanParam(value: unknown): boolean | undefined {
+	if (typeof value === 'boolean') return value
+	if (value === 'true') return true
+	if (value === 'false') return false
+	return undefined
+}
+
 function isHttpUrl(value: string): boolean {
 	return /^https?:\/\//i.test(value)
 }
@@ -181,6 +195,7 @@ export class SvNewApiImageProvider implements ImageProvider {
 		const modelId = stringParam(params?.modelId)
 		if (!modelId) throw new Error('SV NewAPI image: modelId required')
 
+		const refImages: string[] = Array.isArray(params?.refImages) ? params.refImages as string[] : []
 		const body: JsonRecord = { model: modelId, prompt, n: 1 }
 		// Banana Pro (gemini-3-pro-image-preview) maps `size` to its own aspect_ratio and
 		// rejects arbitrary pixel sizes — omit it. Everything else takes an OpenAI `size`.
@@ -189,6 +204,11 @@ export class SvNewApiImageProvider implements ImageProvider {
 				...params,
 				imageSize: params?.imageSize ?? params?.resolution,
 			})
+		}
+		if (refImages.length > 0) {
+			const imageUrls = await Promise.all(refImages.map(ref => uploadRefMedia('SV NewAPI image', ref)))
+			body.image = imageUrls
+			body.image_urls = imageUrls
 		}
 
 		const resp = await requestUrl({
@@ -361,11 +381,31 @@ export class SvNewApiAudioProvider implements AudioProvider {
 		if (!modelId) throw new Error('SV NewAPI audio: modelId required')
 
 		const body: JsonRecord = { model: modelId, input: prompt }
+		const metadata: JsonRecord = {}
 		// Sound-effect models take no voice; TTS forwards the selected voice id/name.
 		if (options.mode !== 'sound-effect') {
 			const voice = optionalString(options.voice)
 			if (voice) body.voice = voice
 		}
+		const speed = numericParam(options.speed)
+		if (speed !== undefined) body.speed = speed
+
+		if (options.mode === 'sound-effect') {
+			const duration = numericParam(options.duration)
+			if (duration !== undefined) metadata.duration_seconds = duration
+		}
+
+		const voiceSettings: JsonRecord = {}
+		const stability = numericParam(options.stability)
+		const similarityBoost = numericParam(options.similarity_boost)
+		const style = numericParam(options.style)
+		const useSpeakerBoost = booleanParam(options.use_speaker_boost)
+		if (stability !== undefined) voiceSettings.stability = stability
+		if (similarityBoost !== undefined) voiceSettings.similarity_boost = similarityBoost
+		if (style !== undefined) voiceSettings.style = style
+		if (useSpeakerBoost !== undefined) voiceSettings.use_speaker_boost = useSpeakerBoost
+		if (Object.keys(voiceSettings).length > 0) metadata.voice_settings = voiceSettings
+		if (Object.keys(metadata).length > 0) body.metadata = metadata
 
 		const resp = await requestUrl({
 			url: `${this.baseUrl}/v1/audio/speech`,
