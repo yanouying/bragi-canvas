@@ -27,4 +27,46 @@ assert.match(
 	'SV NewAPI image generation must send reference images as image_urls for seeded APIMart.',
 )
 
+// Seedream's Ark upstream rejects the smaller generic OpenAI sizes ("image size must be at
+// least 3686400 pixels"). The gateway path must route Seedream through the Seedream size map.
+assert.match(
+	source,
+	/resolveSeedreamImageSize\(/,
+	'SV NewAPI image generation must size Seedream models via resolveSeedreamImageSize, not the generic OpenAI table.',
+)
+
+// `quality` may be forwarded ONLY for sv-gpt-image-2-official (its upstream honors it).
+// Plain sv-gpt-image-2's upstream rejects the model UI's OpenAI enum ("invalid quality:
+// medium"), so quality must be gated behind the official check, never set unconditionally.
+assert.match(
+	source,
+	/modelId === SV_IMAGE_GPT_OFFICIAL\)\s*\{\s*\n\s*const quality = optionalString\(params\?\.quality\)\s*\n\s*if \(quality\) body\.quality = quality/,
+	'SV NewAPI must forward quality only inside the sv-gpt-image-2-official branch.',
+)
+
+// The gpt-image-2 family on APIMart (sv-gpt-image-2 and -official) is billed per quality ×
+// resolution, so it must send an aspect-ratio `size` plus a 1k/2k/4k `resolution` tier — NOT a
+// derived pixel size. Lock that shape, and that the regex covers both ids.
+assert.match(
+	source,
+	/SV_IMAGE_GPT_RE = \/\^sv-gpt-image-2\(-official\)\?\$\//,
+	'SV NewAPI must match both sv-gpt-image-2 and sv-gpt-image-2-official for the APIMart size shape.',
+)
+assert.match(
+	source,
+	/SV_IMAGE_GPT_RE\.test\(modelId\)\)\s*\{[\s\S]*?body\.size = stringParam\(params\?\.aspectRatio[\s\S]*?body\.resolution =/,
+	'SV NewAPI image generation must send the gpt-image-2 family as aspect-ratio size + resolution tier.',
+)
+
+const seedreamSource = readFileSync('src/providers/seedream.ts', 'utf8')
+const twoKLine = seedreamSource.match(/'2K':\s*\{([^}]*)\}/)
+assert.ok(twoKLine, 'Seedream SIZE map must define a 2K tier.')
+const sixteenNine = twoKLine[1].match(/'16:9':\s*'(\d+)x(\d+)'/)
+assert.ok(sixteenNine, 'Seedream 2K tier must define a 16:9 size.')
+const pixels = Number(sixteenNine[1]) * Number(sixteenNine[2])
+assert.ok(
+	pixels >= 3686400,
+	`Seedream 2K 16:9 must be >= 3,686,400 px to satisfy the Ark upstream minimum (got ${pixels}).`,
+)
+
 console.log('SV NewAPI image reference checks passed.')
