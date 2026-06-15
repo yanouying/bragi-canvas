@@ -73,8 +73,8 @@ export const kling3: ModelConfig = {
 		apimart: { apiModelId: 'kling-v3-motion-control', modes: ['motion-control'] },
 		fal: { apiModelId: 'fal-ai/kling-video/v3/pro', modes: ['text-to-video', 'first-frame', 'first-last-frame'] },
 		tokenrouter: { apiModelId: 'kling-v3', modes: ['text-to-video', 'first-frame', 'first-last-frame'] },
-		// Gateway routes to fal kling reference-to-video — requires a reference image.
-		svnewapi: { apiModelId: 'sv-video-kling-fal', modes: ['first-frame'] },
+		// Gateway routes to fal Kling v3 Pro for regular Kling 3.0 modes.
+		svnewapi: { apiModelId: 'sv-kling-3.0', modes: ['text-to-video', 'first-frame', 'first-last-frame'] },
 	},
 	// T2V + first-frame (image→video) + first-last-frame (start+end keyframe)
 	// + motion-control (character image + reference motion video, V3.0 only)

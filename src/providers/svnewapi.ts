@@ -21,8 +21,8 @@ import { resolveOpenAIImageSize } from './openai-image-size'
  */
 
 // Model ids that need special-casing (these are the gateway `sv-*` virtual names).
-const SV_IMAGE_BANANA_PRO = 'sv-image-banana-pro'   // APIMart gemini-3-pro-image-preview rejects `size`
-const SV_VIDEO_SEEDANCE = 'sv-video-seedance'       // byteplus seedance: params go in `metadata`, not top-level
+const SV_IMAGE_BANANA_PRO = 'sv-nano-banana-pro'    // APIMart gemini-3-pro-image-preview rejects `size`
+const SV_VIDEO_SEEDANCE = 'sv-seedance-2.0'         // byteplus seedance: params go in `metadata`, not top-level
 
 const DONE_STATUSES = new Set(['SUCCESS', 'SUCCEEDED', 'COMPLETED'])
 const FAILED_STATUSES = new Set(['FAILURE', 'FAILED', 'ERROR', 'CANCELLED', 'CANCELED'])
