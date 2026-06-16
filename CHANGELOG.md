@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.26.3
+
+- Fixed canvas-scoped duplicate handling so duplicated nodes and generated assets stay associated with the correct canvas.
+- Fixed reference thumbnail refresh behavior after duplicate/canvas operations.
+- Bumped the plugin version to `1.26.3`.
+
 ## 1.26.2
 
 - Fixed TokenRouter GPT Image edit requests so reference images are uploaded and routed correctly.
