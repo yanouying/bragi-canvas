@@ -18,6 +18,8 @@
     "test:mulerouter-carrothub": "node scripts/verify-mulerouter-carrothub-images.mjs",
     "test:reference-image-upload": "node scripts/verify-reference-image-upload.mjs",
     "test:suchuang-gemini-omni": "node scripts/verify-suchuang-gemini-omni.mjs",
+    "test:svnewapi-audio-params": "node scripts/verify-svnewapi-audio-params.mjs",
+    "test:svnewapi-image-refs": "node scripts/verify-svnewapi-image-refs.mjs",
     "test:tokenrouter-modelark-assets": "node scripts/verify-tokenrouter-modelark-assets.mjs",
     "test:text-multimodal": "node scripts/verify-text-multimodal.mjs"
   },

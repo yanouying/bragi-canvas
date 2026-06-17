@@ -1,5 +1,5 @@
 import type { ModelConfig, GenerationType, Mode } from './types'
-import { gptImage } from './gpt-image'
+import { gptImage, gptImageOfficial } from './gpt-image'
 import { nanoBananaPro, nanoBanana2 } from './nano-banana'
 import { seedream5, seedream5Lite, seedream45 } from './seedream'
 import { seedance2, seedance2Fast } from './seedance'
@@ -30,6 +30,7 @@ export const ALL_MODELS: ModelConfig[] = [
 	nanoBananaPro,
 	nanoBanana2,
 	gptImage,
+	gptImageOfficial,
 	grokImagine,
 	midjourneyV8,
 	midjourneyNiji7,

@@ -28,7 +28,7 @@ export const gptImage: ModelConfig = {
 		fal: { apiModelId: 'fal-ai/gpt-image-2' },
 		tokenrouter: { apiModelId: 'openai/gpt-5.4-image-2', refDelivery: { image: 'inline' } },
 		apimart: { apiModelId: 'gpt-image-2' },
-		svnewapi: { apiModelId: 'sv-image-gpt' },
+		svnewapi: { apiModelId: 'sv-gpt-image-2' },
 	},
 	modes: ['text-to-image'],
 	params: [
@@ -64,4 +64,23 @@ export const gptImage: ModelConfig = {
 			default: 'auto',
 		},
 	],
+}
+
+/**
+ * GPT Image 2 (Official) — OpenAI's official gpt-image-2 channel via APIMart.
+ * Distinct from `gpt-image-2` because the official channel honors `quality` and
+ * is billed per a quality × resolution matrix on the SV gateway. Only the APIMart
+ * and SV gateway routes expose it; the same `aspectRatio`/`imageSize`/`quality`
+ * controls as GPT Image 2 apply.
+ */
+export const gptImageOfficial: ModelConfig = {
+	id: 'gpt-image-2-official',
+	name: 'GPT Image 2 (Official)',
+	type: 'image',
+	supportedProviders: {
+		apimart: { apiModelId: 'gpt-image-2-official' },
+		svnewapi: { apiModelId: 'sv-gpt-image-2-official' },
+	},
+	modes: gptImage.modes,
+	params: gptImage.params,
 }

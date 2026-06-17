@@ -7,6 +7,7 @@ import type {
 } from './types'
 import { uploadRef } from './upload'
 import { resolveOpenAIImageSize } from './openai-image-size'
+import { resolveSeedreamImageSize } from './seedream'
 
 /**
  * SV NewAPI — our self-hosted new-api / One-API gateway. It exposes stable `sv-*`
@@ -21,8 +22,16 @@ import { resolveOpenAIImageSize } from './openai-image-size'
  */
 
 // Model ids that need special-casing (these are the gateway `sv-*` virtual names).
-const SV_IMAGE_BANANA_PRO = 'sv-image-banana-pro'   // APIMart gemini-3-pro-image-preview rejects `size`
-const SV_VIDEO_SEEDANCE = 'sv-video-seedance'       // byteplus seedance: params go in `metadata`, not top-level
+const SV_IMAGE_BANANA_PRO = 'sv-nano-banana-pro'    // APIMart gemini-3-pro-image-preview rejects `size`
+// gpt-image-2 family on the APIMart channel (sv-gpt-image-2 and sv-gpt-image-2-official):
+// aspect-ratio `size` + 1k/2k/4k `resolution` tier — same shape as the direct APIMart provider.
+const SV_IMAGE_GPT_RE = /^sv-gpt-image-2(-official)?$/
+const SV_IMAGE_GPT_OFFICIAL = 'sv-gpt-image-2-official' // only this one honors `quality`
+const SV_VIDEO_SEEDANCE = 'sv-seedance-2.0'         // byteplus seedance: params go in `metadata`, not top-level
+// Seedream's Ark upstream enforces a per-tier minimum pixel count, so its `size` must come
+// from the Seedream-specific map, not the smaller generic OpenAI table (kept as a fallback for
+// other OpenAI-compatible image models).
+const SV_IMAGE_SEEDREAM_RE = /seedream/i
 
 const DONE_STATUSES = new Set(['SUCCESS', 'SUCCEEDED', 'COMPLETED'])
 const FAILED_STATUSES = new Set(['FAILURE', 'FAILED', 'ERROR', 'CANCELLED', 'CANCELED'])
@@ -46,6 +55,20 @@ function stringParam(value: unknown, fallback = ''): string {
 function optionalString(value: unknown): string | undefined {
 	const text = stringParam(value, '').trim()
 	return text || undefined
+}
+
+function numericParam(value: unknown): number | undefined {
+	if (typeof value === 'number' && Number.isFinite(value)) return value
+	if (typeof value !== 'string' || !value.trim()) return undefined
+	const parsed = parseFloat(value)
+	return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function booleanParam(value: unknown): boolean | undefined {
+	if (typeof value === 'boolean') return value
+	if (value === 'true') return true
+	if (value === 'false') return false
+	return undefined
 }
 
 function isHttpUrl(value: string): boolean {
@@ -181,14 +204,44 @@ export class SvNewApiImageProvider implements ImageProvider {
 		const modelId = stringParam(params?.modelId)
 		if (!modelId) throw new Error('SV NewAPI image: modelId required')
 
+		const refImages: string[] = Array.isArray(params?.refImages) ? params.refImages as string[] : []
 		const body: JsonRecord = { model: modelId, prompt, n: 1 }
 		// Banana Pro (gemini-3-pro-image-preview) maps `size` to its own aspect_ratio and
-		// rejects arbitrary pixel sizes — omit it. Everything else takes an OpenAI `size`.
-		if (modelId !== SV_IMAGE_BANANA_PRO) {
+		// rejects arbitrary pixel sizes — omit it. Seedream needs its own larger size map
+		// (the Ark upstream rejects the smaller generic sizes). Everything else takes an OpenAI `size`.
+		if (modelId === SV_IMAGE_BANANA_PRO) {
+			// size intentionally omitted
+		} else if (SV_IMAGE_GPT_RE.test(modelId)) {
+			// Both sv-gpt-image-2 and sv-gpt-image-2-official route to the APIMart channel,
+			// which takes an aspect-ratio `size` plus a 1k/2k/4k `resolution` clarity tier
+			// (same shape as the direct APIMart provider) and bills per quality × resolution —
+			// so send the tier explicitly rather than a derived pixel size.
+			body.size = stringParam(params?.aspectRatio, '1:1')
+			const tier = stringParam(params?.imageSize ?? params?.resolution, '2K').toLowerCase()
+			body.resolution = tier === 'auto' ? '2k' : tier
+		} else if (SV_IMAGE_SEEDREAM_RE.test(modelId)) {
+			body.size = resolveSeedreamImageSize(
+				stringParam(params?.resolution ?? params?.imageSize, '2K'),
+				stringParam(params?.aspectRatio, '1:1'),
+			)
+		} else {
 			body.size = resolveOpenAIImageSize({
 				...params,
 				imageSize: params?.imageSize ?? params?.resolution,
 			})
+		}
+		// `quality` is forwarded ONLY for sv-gpt-image-2-official, whose upstream honors it.
+		// Plain sv-gpt-image-2's upstream rejects the model UI's OpenAI-style enum
+		// ("invalid quality: medium, allowed: standard/hd/4k/ultra/high"), so omit it there
+		// and let that upstream default the quality.
+		if (modelId === SV_IMAGE_GPT_OFFICIAL) {
+			const quality = optionalString(params?.quality)
+			if (quality) body.quality = quality
+		}
+		if (refImages.length > 0) {
+			const imageUrls = await Promise.all(refImages.map(ref => uploadRefMedia('SV NewAPI image', ref)))
+			body.image = imageUrls
+			body.image_urls = imageUrls
 		}
 
 		const resp = await requestUrl({
@@ -361,11 +414,31 @@ export class SvNewApiAudioProvider implements AudioProvider {
 		if (!modelId) throw new Error('SV NewAPI audio: modelId required')
 
 		const body: JsonRecord = { model: modelId, input: prompt }
+		const metadata: JsonRecord = {}
 		// Sound-effect models take no voice; TTS forwards the selected voice id/name.
 		if (options.mode !== 'sound-effect') {
 			const voice = optionalString(options.voice)
 			if (voice) body.voice = voice
 		}
+		const speed = numericParam(options.speed)
+		if (speed !== undefined) body.speed = speed
+
+		if (options.mode === 'sound-effect') {
+			const duration = numericParam(options.duration)
+			if (duration !== undefined) metadata.duration_seconds = duration
+		}
+
+		const voiceSettings: JsonRecord = {}
+		const stability = numericParam(options.stability)
+		const similarityBoost = numericParam(options.similarity_boost)
+		const style = numericParam(options.style)
+		const useSpeakerBoost = booleanParam(options.use_speaker_boost)
+		if (stability !== undefined) voiceSettings.stability = stability
+		if (similarityBoost !== undefined) voiceSettings.similarity_boost = similarityBoost
+		if (style !== undefined) voiceSettings.style = style
+		if (useSpeakerBoost !== undefined) voiceSettings.use_speaker_boost = useSpeakerBoost
+		if (Object.keys(voiceSettings).length > 0) metadata.voice_settings = voiceSettings
+		if (Object.keys(metadata).length > 0) body.metadata = metadata
 
 		const resp = await requestUrl({
 			url: `${this.baseUrl}/v1/audio/speech`,

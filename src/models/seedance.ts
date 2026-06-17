@@ -12,7 +12,7 @@ export const seedance2: ModelConfig = {
 		token360: { apiModelId: 'seedance-2.0', refDelivery: { image: 'native_asset', nativeAssetProvider: 'token360' } },
 		// Gateway (byteplus-seedance-2 / Ark) builds content[] with reference roles from
 		// top-level images/audios/videos — full ref support including audio-driven + video-ref.
-		svnewapi: { apiModelId: 'sv-video-seedance', modes: ['text-to-video', 'first-frame', 'image-ref', 'video-ref'] },
+		svnewapi: { apiModelId: 'sv-seedance-2.0', modes: ['text-to-video', 'first-frame', 'image-ref', 'video-ref'] },
 	},
 	modes: ['text-to-video', 'first-frame', 'image-ref', 'video-ref'],
 	params: [

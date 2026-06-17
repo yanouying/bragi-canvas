@@ -50,9 +50,9 @@ export const grokVideo: ModelConfig = {
 	supportedProviders: {
 		xai: { apiModelId: 'grok-imagine-video' },
 		fal: { apiModelId: 'xai/grok-imagine-video' },
-		// Gateway maps sv-video-grok-fal to the fal grok base id and picks the sub-endpoint
+		// Gateway maps sv-grok-video to the fal grok base id and picks the sub-endpoint
 		// by input shape: 1 image -> image-to-video, 2+ -> reference-to-video, video -> extend.
-		svnewapi: { apiModelId: 'sv-video-grok-fal', modes: ['text-to-video', 'first-frame', 'image-ref', 'video-extend'] },
+		svnewapi: { apiModelId: 'sv-grok-video', modes: ['text-to-video', 'first-frame', 'image-ref', 'video-extend'] },
 	},
 	modes: ['text-to-video', 'first-frame', 'image-ref', 'video-extend'],
 	params: [
