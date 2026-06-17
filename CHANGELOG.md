@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.27.0
+
+- Added GPT Image 2 (Official) as a selectable APIMart/SV NewAPI image model with quality-aware routing.
+- Aligned SV NewAPI gateway model IDs for image, video, audio, and text models.
+- Forwarded SV NewAPI media generation parameters for Seedance and fal-routed video models.
+- Fixed SV NewAPI GPT Image 2 sizing/quality handling and Seedream image sizing.
+- Added SV NewAPI image reference and audio parameter verification scripts.
+- Bumped the plugin version to `1.27.0`.
+
 ## 1.26.3
 
 - Fixed canvas-scoped duplicate handling so duplicated nodes and generated assets stay associated with the correct canvas.
