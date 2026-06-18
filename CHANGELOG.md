@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.27.1
+
+- Fixed APIMart GPT Image 2 routing by using the official upstream model ID while keeping Bragi's stable `gpt-image-2` model ID.
+- Bumped the plugin version to `1.27.1`.
+
 ## 1.27.0
 
 - Added GPT Image 2 (Official) as a selectable APIMart/SV NewAPI image model with quality-aware routing.
