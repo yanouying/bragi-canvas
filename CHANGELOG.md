@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.27.3
+
+- Fixed SV NewAPI Seedance Auto duration by forwarding it as `metadata.duration = -1`, matching the direct BytePlus/Volcengine Ark Seedance behavior.
+- Added static verification coverage for SV NewAPI video parameters.
+- Bumped the plugin version to `1.27.3`.
+
 ## 1.27.2
 
 - Fixed SV NewAPI Nano Banana Pro requests by forwarding the selected aspect ratio as APIMart-style `size` and the selected image size as `resolution`.
