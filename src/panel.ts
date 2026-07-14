@@ -242,7 +242,13 @@ function inferMode(modes: Mode[], imageCount: number, videoCount: number): Mode 
 	if (videoCount > 0 && modes.includes('video-extend')) return 'video-extend'
 	if (videoCount > 0 && modes.includes('video-edit')) return 'video-edit'
 
-	// 2+ images → prefer first-last-frame, then multi-ref, then image-ref
+	// 3+ images cannot be a first/last-frame pair; prefer a reference mode.
+	if (imageCount > 2) {
+		if (modes.includes('multi-image-ref')) return 'multi-image-ref'
+		if (modes.includes('image-ref')) return 'image-ref'
+	}
+
+	// 2 images → prefer first-last-frame, then multi-ref, then image-ref
 	if (imageCount >= 2) {
 		if (modes.includes('first-last-frame')) return 'first-last-frame'
 		if (modes.includes('multi-image-ref')) return 'multi-image-ref'

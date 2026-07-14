@@ -253,7 +253,7 @@ export const PROVIDERS: ProviderSpec[] = [
 	{
 		id: 'kling',
 		name: 'Kling',
-		docUrl: 'https://app.klingai.com/global/dev/document-api/',
+		docUrl: 'https://klingai.com/document-api/api/video/3-0-omni/video-omni',
 		fields: [
 			{ key: 'klingAk', label: 'Access Key', placeholder: 'AK', type: 'password' },
 			{ key: 'klingSk', label: 'Secret Key', placeholder: 'SK', type: 'password' },
@@ -470,7 +470,7 @@ export const PROVIDERS: ProviderSpec[] = [
 	{
 		id: 'apimart',
 		name: 'APIMart',
-		docUrl: 'https://docs.apimart.ai/en/api-reference/videos/omni-flash-ext/generation',
+		docUrl: 'https://docs.apimart.ai/en/api-reference/videos/kling-v3-omni/generation',
 		fields: [{ key: 'apimart', label: 'API Key', placeholder: 'sk-...', type: 'password' }],
 		defaultRefDelivery: { image: 'relay', video: 'relay' },
 		isConfigured: (s) => !!s.providers.apimart,
