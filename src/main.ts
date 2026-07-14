@@ -621,6 +621,7 @@ export default class BragiCanvas extends Plugin {
 			const isMuleRouterWan = activeProvider === 'mulerouter' && model.id === 'wan-2.7'
 			const isDashScopeWan = activeProvider === 'dashscope' && model.id === 'wan-2.7'
 			const supportsApimartVideoRef = activeProvider === 'apimart' && model.id === 'omni-flash-ext'
+			const supportsKlingOmniVideoRef = model.id === 'kling-3.0-omni' && (activeProvider === 'kling' || activeProvider === 'apimart')
 			const isNativeSeedance = (activeProvider === 'bytedance' || activeProvider === 'byteplus') && isSeedanceModel
 			const hasSeedanceMediaRefs = uniqueImages.length > 0 || uniqueAudios.length > 0 || uniqueVideos.length > 0
 			// BytePlus asset library: run when Seedance has reference media and AK/SK configured.
@@ -694,14 +695,17 @@ export default class BragiCanvas extends Plugin {
 			// Prepare reference videos for models/providers that can consume upstream video inputs.
 			// BytePlus Seedance videos must go through asset:// so face-containing clips are reviewed first.
 			if (model.type === 'video' && uniqueVideos.length > 0) {
-				if (mode === 'video-ref' && !supportsSeedanceUrlRefs && !supportsApimartVideoRef && !isDashScopeWan) {
-					throw new Error('Reference video is only available with Volcengine, BytePlus, TokenRouter, or Token360 Seedance, APIMart Omni-Flash-Ext, or DashScope Wan 2.7.')
+				if (mode === 'video-ref' && !supportsSeedanceUrlRefs && !supportsApimartVideoRef && !supportsKlingOmniVideoRef && !isDashScopeWan) {
+					throw new Error('Reference video is not available for the active model and provider.')
 				}
 				if (supportsSeedanceUrlRefs && uniqueVideos.length > 3) {
 					throw new Error('Seedance supports up to 3 reference videos.')
 				}
 				if (supportsApimartVideoRef && uniqueVideos.length > 1) {
 					throw new Error('APIMart Omni-Flash-Ext supports at most 1 reference video.')
+				}
+				if (supportsKlingOmniVideoRef && uniqueVideos.length > 1) {
+					throw new Error('Kling 3.0 Omni supports at most 1 reference video.')
 				}
 				if (isNativeSeedance && activeProvider === 'byteplus' && !bytePlusCreds) {
 					throw new Error('Add BytePlus access key and secret key in settings to use reference videos.')

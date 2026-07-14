@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Added Kling 3.0 Omni through the native Kling and APIMart providers, including text-to-video, first/last-frame, multi-image reference, feature-video reference, and video-edit flows.
+- Added 3–15 second duration, Standard/Pro/4K quality, optional generated audio, source-audio retention, and advanced multi-shot/subject payload support while keeping the generator bar mode-specific and compact.
+- Added payload contract verification for both provider request shapes and native Omni task polling.
+
 ## 1.27.3
 
 - Fixed SV NewAPI Seedance Auto duration by forwarding it as `metadata.duration = -1`, matching the direct BytePlus/Volcengine Ark Seedance behavior.
