@@ -248,6 +248,11 @@ try {
 		'Kling 3.0 must hide the quality selector Pika does not support.',
 	)
 	assert.doesNotMatch(modelSource, /apiModelId: 'kling-o3'/, 'Pika must not expose an unavailable Kling O3 route.')
+	assert.doesNotMatch(
+		modelSource,
+		/id: 'kling-3\.0-omni'[\s\S]*?providerOverrides: \{[^}]*pika/,
+		'Kling 3.0 Omni params must not keep stale Pika provider overrides.',
+	)
 	assert.doesNotMatch(modelSource, /id: 'kling-o1'/, 'This change must not add a mismatched Kling O1 model.')
 	assert.match(
 		modelRulesSource,

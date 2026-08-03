@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.31.2
+
+- Fixed Pika Kling routing to use the current `kling-3.0` API paths.
+- Removed the unavailable Pika Kling 3.0 Omni route and hid the unsupported Pika quality selector.
+- Updated Pika provider regression coverage and provider rules.
+- Bumped the plugin version to `1.31.2`.
+
 ## 1.31.1
 
 - Removed the forbidden `obsidianmd/ui/sentence-case` disable comment from the Denoise choice modal.

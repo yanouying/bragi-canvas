@@ -109,7 +109,6 @@ const KLING_OMNI_PARAMS: ModelParam[] = [
 			{ label: 'Pro', value: 'pro' },
 			{ label: '4K', value: '4k' },
 		],
-		providerOverrides: { pika: { hidden: true } },
 		default: 'std',
 	},
 	{
@@ -132,7 +131,6 @@ const KLING_OMNI_PARAMS: ModelParam[] = [
 			{ label: 'Multi shots', value: 'true' },
 			{ label: 'Single shot', value: 'false' },
 		],
-		providerOverrides: { pika: { hidden: true } },
 		default: 'true',
 	},
 	{
