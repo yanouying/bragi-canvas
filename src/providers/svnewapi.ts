@@ -10,7 +10,7 @@ import { resolveOpenAIImageSize } from './openai-image-size'
 import { resolveSeedreamImageSize } from './seedream'
 
 // Fixed SVRouter gateway root (OpenAI-compatible; requests append `/v1/...`).
-export const SVROUTER_BASE_URL = 'https://gateway.storyverseai.art'
+export const SVROUTER_BASE_URL = 'https://gateway.one-take-ai.com'
 
 /**
  * SVRouter — our self-hosted new-api / One-API gateway. It exposes stable `sv-*`
