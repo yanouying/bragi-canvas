@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 1.31.3
+
+- Updated the fixed SVRouter gateway base URL to `https://gateway.one-take-ai.com`.
+- Bumped the plugin version to `1.31.3`.
+
 ## 1.31.2
 
 - Fixed Pika Kling routing to use the current `kling-3.0` API paths.
