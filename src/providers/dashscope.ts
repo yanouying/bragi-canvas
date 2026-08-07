@@ -25,6 +25,7 @@ const WAN27_T2V = 'wan2.7-t2v-2026-04-25'
 const WAN27_I2V = 'wan2.7-i2v-2026-04-25'
 const WAN27_R2V = 'wan2.7-r2v'
 const WAN27_VIDEOEDIT = 'wan2.7-videoedit'
+const WAN30_VIDEO = 'wan3.0-video'
 const VIDEO_DONE_STATUSES = new Set(['SUCCEEDED', 'SUCCESS', 'COMPLETED'])
 const VIDEO_FAILED_STATUSES = new Set(['FAILED', 'FAILURE', 'ERROR', 'CANCELED', 'CANCELLED', 'UNKNOWN'])
 
@@ -212,16 +213,33 @@ function normalizeResolution(value: unknown): string {
 	return text === '1080P' ? '1080P' : '720P'
 }
 
+function normalizeWan30Resolution(value: unknown): string {
+	const text = stringParam(value, '1080P').trim().toUpperCase()
+	return ['480P', '720P', '1080P'].includes(text) ? text : '1080P'
+}
+
 function normalizeRatio(value: unknown): string | undefined {
 	const ratio = stringParam(value, '').trim()
 	return ['16:9', '9:16', '1:1', '4:3', '3:4'].includes(ratio) ? ratio : undefined
+}
+
+function normalizeWan30Ratio(value: unknown): string {
+	const ratio = stringParam(value, 'adaptive').trim()
+	return ['adaptive', '16:9', '9:16', '1:1', '4:3', '3:4'].includes(ratio) ? ratio : 'adaptive'
+}
+
+function normalizeWan30Duration(value: unknown): number {
+	const parsed = optionalNumberParam(value)
+	if (parsed !== undefined && Math.round(parsed) === -1) return -1
+	return boundedInt(value, 5, 2, 30)
 }
 
 function isHttpUrl(value: string): boolean {
 	return /^https?:\/\//i.test(value)
 }
 
-function extensionForMime(mimeType: string, kind: 'image' | 'audio' | 'video'): string {
+function extensionForMime(mimeType: string, kind: 'image' | 'audio' | 'video' | 'pdf'): string {
+	if (mimeType.includes('pdf')) return 'pdf'
 	if (mimeType.includes('webp')) return 'webp'
 	if (mimeType.includes('bmp')) return 'bmp'
 	if (mimeType.includes('jpeg') || mimeType.includes('jpg')) return 'jpg'
@@ -235,10 +253,10 @@ function extensionForMime(mimeType: string, kind: 'image' | 'audio' | 'video'): 
 	if (mimeType.includes('ogg')) return 'ogg'
 	if (mimeType.includes('opus')) return 'opus'
 	if (mimeType.includes('mpeg') || mimeType.includes('mp3')) return 'mp3'
-	return kind === 'video' ? 'mp4' : kind === 'audio' ? 'mp3' : 'png'
+	return kind === 'video' ? 'mp4' : kind === 'audio' ? 'mp3' : kind === 'pdf' ? 'pdf' : 'png'
 }
 
-function dataUriToBytes(dataUri: string, kind: 'image' | 'audio' | 'video'): { bytes: Uint8Array; ext: string; mimeType: string } | null {
+function dataUriToBytes(dataUri: string, kind: 'image' | 'audio' | 'video' | 'pdf'): { bytes: Uint8Array; ext: string; mimeType: string } | null {
 	const match = dataUri.match(/^data:([^;]+);base64,(.+)$/)
 	if (!match) return null
 	const mimeType = match[1]
@@ -433,9 +451,9 @@ function mergeVoices(voices: VoiceOption[]): VoiceOption[] {
 	return [...byId.values()]
 }
 
-type MediaKind = 'image' | 'audio' | 'video'
+type MediaKind = 'image' | 'audio' | 'video' | 'pdf'
 
-interface Wan27Route {
+interface WanVideoRoute {
 	model: string
 	input: UnknownRecord
 	parameters: UnknownRecord
@@ -452,7 +470,10 @@ export class DashScopeVideoProvider implements VideoProvider {
 	) {}
 
 	async generateVideo(prompt: string, params?: Record<string, unknown>): Promise<GenerateVideoResult> {
-		const route = await this.buildWan27Route(prompt, params || {})
+		const options = params || {}
+		const route = stringParam(options.modelId, 'wan-2.7') === WAN30_VIDEO
+			? await this.buildWan30Route(prompt, options)
+			: await this.buildWan27Route(prompt, options)
 		const resp = await requestUrl({
 			url: dashScopeUrl(this.baseUrl, VIDEO_SYNTHESIS_PATH),
 			method: 'POST',
@@ -501,7 +522,59 @@ export class DashScopeVideoProvider implements VideoProvider {
 		return { done: false, taskId }
 	}
 
-	private async buildWan27Route(prompt: string, params: Record<string, unknown>): Promise<Wan27Route> {
+	private async buildWan30Route(prompt: string, params: Record<string, unknown>): Promise<WanVideoRoute> {
+		const genMode = stringParam(params.genMode, 'text-to-video')
+		const refImages = stringList(params.refImages)
+		const refAudios = stringList(params.refAudios)
+		const refVideos = stringList(params.refVideos)
+		const refPdfs = stringList(params.refPdfs)
+		const supportedModes = new Set(['text-to-video', 'first-frame', 'first-last-frame', 'image-ref', 'video-ref'])
+		if (!supportedModes.has(genMode)) throw new Error(`Wan 3.0 does not support ${genMode} mode.`)
+
+		const media: UnknownRecord[] = []
+		if (genMode === 'first-frame' || genMode === 'first-last-frame') {
+			const expectedImages = genMode === 'first-last-frame' ? 2 : 1
+			if (refImages.length !== expectedImages) {
+				throw new Error(`Wan 3.0 ${genMode} mode requires exactly ${expectedImages} upstream image${expectedImages === 1 ? '' : 's'}.`)
+			}
+			if (refVideos.length > 0 || refAudios.length > 0 || refPdfs.length > 0) {
+				throw new Error('Wan 3.0 first-frame modes cannot be combined with reference video, audio, or files.')
+			}
+			media.push({ type: 'first_frame', url: await this.ensureUrl(refImages[0], 'image') })
+			if (genMode === 'first-last-frame') {
+				media.push({ type: 'last_frame', url: await this.ensureUrl(refImages[1], 'image') })
+			}
+		} else {
+			if (refImages.length > 10) throw new Error('Wan 3.0 supports at most 10 reference images.')
+			if (refVideos.length > 5) throw new Error('Wan 3.0 supports at most 5 reference videos.')
+			if (refAudios.length > 5) throw new Error('Wan 3.0 supports at most 5 reference audio clips.')
+			if (refPdfs.length > 1) throw new Error('Wan 3.0 supports at most 1 reference file.')
+			const imageMedia = await Promise.all(refImages.map(async url => ({ type: 'reference_image', url: await this.ensureUrl(url, 'image') })))
+			const videoMedia = await Promise.all(refVideos.map(async url => ({ type: 'reference_video', url: await this.ensureUrl(url, 'video') })))
+			const audioMedia = await Promise.all(refAudios.map(async url => ({ type: 'reference_audio', url: await this.ensureUrl(url, 'audio') })))
+			const fileMedia = await Promise.all(refPdfs.map(async url => ({ type: 'file', url: await this.ensureUrl(url, 'pdf') })))
+			media.push(...imageMedia, ...videoMedia, ...audioMedia, ...fileMedia)
+			if ((genMode === 'image-ref' || genMode === 'video-ref') && media.length === 0) {
+				throw new Error(`Wan 3.0 ${genMode} mode requires at least one upstream reference.`)
+			}
+		}
+
+		const input: UnknownRecord = { prompt }
+		if (media.length > 0) input.media = media
+		const parameters: UnknownRecord = {
+			resolution: normalizeWan30Resolution(params.resolution),
+			ratio: normalizeWan30Ratio(params.ratio || params.aspectRatio || params.aspect_ratio),
+			duration: normalizeWan30Duration(params.duration),
+			audio: optionalBooleanParam(params.audio) ?? true,
+			watermark: optionalBooleanParam(params.watermark) ?? false,
+		}
+		const seed = optionalNumberParam(params.seed)
+		if (seed !== undefined) parameters.seed = Math.min(Math.max(Math.round(seed), 0), 2147483647)
+
+		return { model: WAN30_VIDEO, input, parameters }
+	}
+
+	private async buildWan27Route(prompt: string, params: Record<string, unknown>): Promise<WanVideoRoute> {
 		const genMode = stringParam(params.genMode, 'text-to-video')
 		const modelId = stringParam(params.modelId, 'wan-2.7')
 		const refImages = stringList(params.refImages)
@@ -520,7 +593,7 @@ export class DashScopeVideoProvider implements VideoProvider {
 		return this.buildWan27T2v(prompt, params, refAudios)
 	}
 
-	private async buildWan27T2v(prompt: string, params: Record<string, unknown>, refAudios: string[]): Promise<Wan27Route> {
+	private async buildWan27T2v(prompt: string, params: Record<string, unknown>, refAudios: string[]): Promise<WanVideoRoute> {
 		const input: UnknownRecord = { prompt }
 		if (refAudios[0]) input.audio_url = await this.ensureUrl(refAudios[0], 'audio')
 		return {
@@ -537,7 +610,7 @@ export class DashScopeVideoProvider implements VideoProvider {
 		refImages: string[],
 		refVideos: string[],
 		refAudios: string[],
-	): Promise<Wan27Route> {
+	): Promise<WanVideoRoute> {
 		const media: UnknownRecord[] = []
 		if (genMode === 'video-extend') {
 			if (!refVideos[0]) throw new Error('Wan 2.7 video extend requires one upstream video.')
@@ -565,7 +638,7 @@ export class DashScopeVideoProvider implements VideoProvider {
 		refImages: string[],
 		refVideos: string[],
 		refAudios: string[],
-	): Promise<Wan27Route> {
+	): Promise<WanVideoRoute> {
 		const media: UnknownRecord[] = []
 		const imageMedia = await Promise.all(refImages.map(async url => ({ type: 'reference_image', url: await this.ensureUrl(url, 'image') })))
 		const videoMedia = await Promise.all(refVideos.map(async url => ({ type: 'reference_video', url: await this.ensureUrl(url, 'video') })))
@@ -588,7 +661,7 @@ export class DashScopeVideoProvider implements VideoProvider {
 		params: Record<string, unknown>,
 		refImages: string[],
 		refVideos: string[],
-	): Promise<Wan27Route> {
+	): Promise<WanVideoRoute> {
 		if (!refVideos[0]) throw new Error('Wan 2.7 VideoEdit requires one upstream video.')
 		if (refImages.length > 3) throw new Error('Wan 2.7 VideoEdit supports at most 3 reference images.')
 		const media: UnknownRecord[] = [

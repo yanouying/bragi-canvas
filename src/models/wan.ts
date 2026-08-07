@@ -50,6 +50,72 @@ export const qwenImageEditSpicy: ModelConfig = {
 	params: [],
 }
 
+export const wan30: ModelConfig = {
+	id: 'wan-3.0',
+	name: 'Wan 3.0',
+	type: 'video',
+	supportedProviders: {
+		dashscope: { apiModelId: 'wan3.0-video' },
+	},
+	modes: [
+		'text-to-video',
+		'first-frame',
+		'first-last-frame',
+		'image-ref',
+		'video-ref',
+	],
+	params: [
+		{
+			id: 'resolution',
+			label: 'Resolution',
+			type: 'select',
+			options: [
+				{ label: '480P', value: '480P' },
+				{ label: '720P', value: '720P' },
+				{ label: '1080P', value: '1080P' },
+			],
+			default: '1080P',
+		},
+		{
+			id: 'ratio',
+			label: 'Ratio',
+			type: 'select',
+			options: [
+				{ label: 'Adaptive', value: 'adaptive' },
+				{ label: '16:9', value: '16:9' },
+				{ label: '4:3', value: '4:3' },
+				{ label: '1:1', value: '1:1' },
+				{ label: '3:4', value: '3:4' },
+				{ label: '9:16', value: '9:16' },
+			],
+			default: 'adaptive',
+		},
+		{
+			id: 'duration',
+			label: 'Duration',
+			type: 'select',
+			options: [
+				{ label: 'Auto', value: '-1' },
+				...Array.from({ length: 29 }, (_, index) => {
+					const seconds = index + 2
+					return { label: `${seconds}s`, value: String(seconds) }
+				}),
+			],
+			default: '5',
+		},
+		{
+			id: 'audio',
+			label: 'Audio',
+			type: 'select',
+			options: [
+				{ label: 'On', value: 'true' },
+				{ label: 'Off', value: 'false' },
+			],
+			default: 'true',
+		},
+	],
+}
+
 export const wan27: ModelConfig = {
 	id: 'wan-2.7',
 	name: 'Wan 2.7',
