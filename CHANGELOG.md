@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 1.33.0
+
+- Added Wan 3.0 video generation through DashScope, with text-to-video, first-frame, first-last-frame, image-ref, and video-ref modes.
+- Added image, video, audio, and PDF reference handling for Wan 3.0, including temporary HTTPS upload support for PDFs.
+- Added Wan 3.0 params for 480P/720P/1080P output, adaptive or fixed ratios, auto or 2-30 second duration, generated audio, and seed clamping.
+- Added DashScope Wan 3.0 request-shape and validation regression coverage.
+- Bumped the plugin version to `1.33.0`.
+
 ## 1.32.0
 
 - Added Mureka Music under Audio → Music with prompt-to-song, upstream-lyrics-to-song, and instrumental generation.
