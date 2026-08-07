@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 1.34.0
+
+- Added Seedance 2.5 video generation for Volcengine and BytePlus.
+- Supported Seedance 2.5 text-to-video, first-frame, first-last-frame, multimodal reference, video extension, and video editing modes.
+- Added Seedance 2.5 provider validation for duration, adaptive-only modes, resolution, output format, reference limits, and upstream model IDs.
+- Added Seedance 2.5 provider regression coverage.
+- Bumped the plugin version to `1.34.0`.
+
 ## 1.33.0
 
 - Added Wan 3.0 video generation through DashScope, with text-to-video, first-frame, first-last-frame, image-ref, and video-ref modes.
