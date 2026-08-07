@@ -47,6 +47,7 @@ import { BFL_DENOISE_PROMPT } from './providers/bfl'
 import { getAssetIdsForFiles, getNodeAssetId, getNodeAssetIdMap, getSeedanceAssetMediaKind, SEEDANCE_ASSET_PROVIDER_LABELS, setNodeAssetId, type SeedanceAssetProviderId } from './asset-ids'
 import { requestNlm35Denoise } from './denoise'
 import { DenoiseChoiceModal, type DenoiseMethod } from './ui/denoise-choice-modal'
+import { getSeedanceReferenceLimits } from './seedance-capabilities'
 
 const ELEVENLABS_VOICE_CHANGER_MODEL_ID = 'eleven_multilingual_sts_v2'
 
@@ -774,6 +775,16 @@ export default class BragiCanvas extends Plugin {
 			const supportsKlingOmniVideoRef = model.id === 'kling-3.0-omni' && (activeProvider === 'kling' || activeProvider === 'apimart')
 			const isNativeSeedance = (activeProvider === 'bytedance' || activeProvider === 'byteplus') && isSeedanceModel
 			const hasSeedanceMediaRefs = uniqueImages.length > 0 || uniqueAudios.length > 0 || uniqueVideos.length > 0
+			const seedanceReferenceLimits = isSeedanceModel ? getSeedanceReferenceLimits(model.id) : null
+			if (seedanceReferenceLimits && uniqueImages.length > seedanceReferenceLimits.images) {
+				throw new Error(`${model.name} supports up to ${seedanceReferenceLimits.images} reference images.`)
+			}
+			if (seedanceReferenceLimits && uniqueAudios.length > seedanceReferenceLimits.audios) {
+				throw new Error(`${model.name} supports up to ${seedanceReferenceLimits.audios} reference audio files.`)
+			}
+			if (seedanceReferenceLimits && uniqueVideos.length > seedanceReferenceLimits.videos) {
+				throw new Error(`${model.name} supports up to ${seedanceReferenceLimits.videos} reference videos.`)
+			}
 			// BytePlus asset library: run when Seedance has reference media and AK/SK configured.
 			const bytePlusCreds = (activeProvider === 'byteplus' && isNativeSeedance && hasSeedanceMediaRefs)
 				? getBytePlusAssetCreds(this)
@@ -829,9 +840,6 @@ export default class BragiCanvas extends Plugin {
 
 			// Upload reference audios for providers/models that need public media URLs.
 			if ((supportsSeedanceUrlRefs || isMuleRouterWan || isDashScopeWan) && uniqueAudios.length > 0) {
-				if (supportsSeedanceUrlRefs && uniqueAudios.length > 3) {
-					throw new Error('Seedance supports up to 3 reference audio files.')
-				}
 				const audioRefs = isMuleRouterWan ? uniqueAudios.slice(0, 1) : uniqueAudios
 				for (const audioPath of audioRefs) {
 					if (bytePlusCreds) {
@@ -848,22 +856,17 @@ export default class BragiCanvas extends Plugin {
 			}
 
 			// Prepare reference videos for models/providers that can consume upstream video inputs.
-			// BytePlus Seedance videos must go through asset:// so face-containing clips are reviewed first.
+			// BytePlus uses asset:// when native asset credentials are configured; otherwise
+			// the declarative delivery path falls back to a temporary HTTPS relay URL.
 			if (model.type === 'video' && uniqueVideos.length > 0) {
 				if (mode === 'video-ref' && !supportsSeedanceUrlRefs && !supportsApimartVideoRef && !supportsKlingOmniVideoRef && !isDashScopeWan) {
 					throw new Error('Reference video is not available for the active model and provider.')
-				}
-				if (supportsSeedanceUrlRefs && uniqueVideos.length > 3) {
-					throw new Error('Seedance supports up to 3 reference videos.')
 				}
 				if (supportsApimartVideoRef && uniqueVideos.length > 1) {
 					throw new Error('APIMart Omni-Flash-Ext supports at most 1 reference video.')
 				}
 				if (supportsKlingOmniVideoRef && uniqueVideos.length > 1) {
 					throw new Error('Kling 3.0 Omni supports at most 1 reference video.')
-				}
-				if (isNativeSeedance && activeProvider === 'byteplus' && !bytePlusCreds) {
-					throw new Error('Add BytePlus access key and secret key in settings to use reference videos.')
 				}
 				const shouldUseVideos = supportsSeedanceUrlRefs || isDashScopeWan || mode === 'video-extend' || mode === 'video-edit' || mode === 'video-ref' || mode === 'motion-control'
 				if (shouldUseVideos) {

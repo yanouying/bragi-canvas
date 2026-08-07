@@ -24,7 +24,7 @@ assert.match(
 
 assert.match(
 	directSeedanceSource,
-	/const duration = parseInt\(params\?\.duration \|\| '5'\)[\s\S]*?duration,/,
+	/const duration = Number\.parseInt\(stringParam\(params, 'duration', is25 \? '-1' : '5'\), 10\)[\s\S]*?duration,/,
 	'Direct BytePlus/Volcengine Seedance must continue forwarding Auto duration as numeric -1.',
 )
 

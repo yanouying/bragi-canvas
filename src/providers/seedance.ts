@@ -3,8 +3,145 @@ import type { VideoProvider, GenerateVideoResult } from './types'
 import type { App } from 'obsidian'
 import { requestUrl } from 'obsidian'
 import { uploadRef } from './upload'
+import { getSeedanceReferenceLimits, isSeedance25ModelId } from '../seedance-capabilities'
 
 const DEFAULT_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks'
+
+type SeedanceContent =
+	| { type: 'text'; text: string }
+	| { type: 'image_url'; image_url: { url: string }; role: 'first_frame' | 'last_frame' | 'reference_image' }
+	| { type: 'audio_url'; audio_url: { url: string }; role: 'reference_audio' }
+	| { type: 'video_url'; video_url: { url: string }; role: 'reference_video' }
+
+export interface SeedanceRequestBody {
+	model: string
+	content: SeedanceContent[]
+	duration: number
+	ratio: string
+	resolution: string
+	generate_audio: boolean
+	watermark: false
+	output_format?: 'mp4' | 'mov'
+}
+
+function stringParam(params: Record<string, unknown>, key: string, fallback: string): string {
+	const value = params[key]
+	if (typeof value === 'string') return value
+	if (typeof value === 'number' || typeof value === 'boolean') return `${value}`
+	return fallback
+}
+
+function stringArrayParam(params: Record<string, unknown>, key: string): string[] {
+	const value = params[key]
+	return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+}
+
+function assertSeedanceInputs(
+	modelId: string,
+	genMode: string,
+	duration: number,
+	ratio: string,
+	resolution: string,
+	outputFormat: string,
+	refImages: string[],
+	refAudios: string[],
+	refVideos: string[],
+): void {
+	const is25 = isSeedance25ModelId(modelId)
+	const limits = getSeedanceReferenceLimits(modelId)
+	const modelName = is25 ? 'Seedance 2.5' : 'Seedance'
+	if (refImages.length > limits.images) throw new Error(`${modelName} supports up to ${limits.images} reference images.`)
+	if (refVideos.length > limits.videos) throw new Error(`${modelName} supports up to ${limits.videos} reference videos.`)
+	if (refAudios.length > limits.audios) throw new Error(`${modelName} supports up to ${limits.audios} reference audio files.`)
+
+	const supportedModes = is25
+		? ['text-to-video', 'first-frame', 'first-last-frame', 'image-ref', 'video-ref', 'video-extend', 'video-edit']
+		: ['text-to-video', 'first-frame', 'image-ref', 'video-ref']
+	if (!supportedModes.includes(genMode)) throw new Error(`${modelName} does not support ${genMode} mode.`)
+
+	const totalRefs = refImages.length + refAudios.length + refVideos.length
+	if (genMode === 'text-to-video' && totalRefs > 0) {
+		throw new Error(`${modelName} text-to-video mode does not accept reference media.`)
+	}
+	if (genMode === 'first-frame' && (refImages.length !== 1 || refAudios.length > 0 || refVideos.length > 0)) {
+		throw new Error(`${modelName} first-frame mode requires exactly one image and no other reference media.`)
+	}
+	if (genMode === 'first-last-frame' && (refImages.length !== 2 || refAudios.length > 0 || refVideos.length > 0)) {
+		throw new Error(`${modelName} first-last-frame mode requires exactly two images and no other reference media.`)
+	}
+	if (genMode === 'image-ref' && refImages.length === 0) {
+		throw new Error(`${modelName} image-ref mode requires at least one reference image.`)
+	}
+	if (genMode === 'video-ref' && (is25 ? totalRefs === 0 : refImages.length + refVideos.length === 0)) {
+		throw new Error(`${modelName} video-ref mode requires reference media.`)
+	}
+	if ((genMode === 'video-edit' || genMode === 'video-extend') && refVideos.length === 0) {
+		throw new Error(`${modelName} ${genMode} mode requires at least one reference video.`)
+	}
+
+	if (!Number.isInteger(duration) || (duration !== -1 && (duration < 4 || duration > (is25 ? 30 : 15)))) {
+		throw new Error(`${modelName} duration must be Auto (-1) or an integer from 4 to ${is25 ? 30 : 15} seconds.`)
+	}
+	if (is25) {
+		const supportedRatios = ['adaptive', '16:9', '4:3', '1:1', '3:4', '9:16', '21:9']
+		if (!supportedRatios.includes(ratio)) throw new Error(`Seedance 2.5 does not support ratio ${ratio}.`)
+		if (['first-frame', 'first-last-frame', 'video-extend', 'video-edit'].includes(genMode) && ratio !== 'adaptive') {
+			throw new Error(`Seedance 2.5 ${genMode} mode requires adaptive ratio.`)
+		}
+		if (genMode === 'video-edit' && duration !== -1) {
+			throw new Error('Seedance 2.5 video-edit mode requires Auto (-1) duration.')
+		}
+		if (!['480p', '720p'].includes(resolution)) throw new Error(`Seedance 2.5 does not support ${resolution} output.`)
+		if (!['mp4', 'mov'].includes(outputFormat)) throw new Error(`Seedance 2.5 does not support ${outputFormat} output.`)
+	}
+}
+
+export function buildSeedanceRequestBody(prompt: string, params: Record<string, unknown> = {}): SeedanceRequestBody {
+	const modelId = stringParam(params, 'modelId', 'doubao-seedance-2-0-260128')
+	const is25 = isSeedance25ModelId(modelId)
+	const genMode = stringParam(params, 'genMode', 'text-to-video')
+	const duration = Number.parseInt(stringParam(params, 'duration', is25 ? '-1' : '5'), 10)
+	const ratio = stringParam(params, 'ratio', is25 ? 'adaptive' : '16:9')
+	const resolution = stringParam(params, 'resolution', '720p')
+	const outputFormat = stringParam(params, 'output_format', 'mp4')
+	const refImages = stringArrayParam(params, 'refImages')
+	const refAudios = stringArrayParam(params, 'refAudios')
+	const refVideos = stringArrayParam(params, 'refVideos')
+	const generateAudio = params.generate_audio !== 'false' && params.generate_audio !== false
+
+	assertSeedanceInputs(modelId, genMode, duration, ratio, resolution, outputFormat, refImages, refAudios, refVideos)
+	if (genMode === 'text-to-video' && !prompt.trim()) throw new Error(`${is25 ? 'Seedance 2.5' : 'Seedance'} text-to-video mode requires a prompt.`)
+
+	const content: SeedanceContent[] = []
+	if (prompt.trim()) content.push({ type: 'text', text: prompt })
+
+	for (const [index, imageUrl] of refImages.entries()) {
+		const role = genMode === 'first-frame'
+			? 'first_frame'
+			: genMode === 'first-last-frame'
+				? index === 0 ? 'first_frame' : 'last_frame'
+				: 'reference_image'
+		content.push({ type: 'image_url', image_url: { url: imageUrl }, role })
+	}
+	for (const audioUrl of refAudios) {
+		content.push({ type: 'audio_url', audio_url: { url: audioUrl }, role: 'reference_audio' })
+	}
+	for (const videoUrl of refVideos) {
+		content.push({ type: 'video_url', video_url: { url: videoUrl }, role: 'reference_video' })
+	}
+
+	const body: SeedanceRequestBody = {
+		model: modelId,
+		content,
+		duration,
+		ratio,
+		resolution,
+		generate_audio: generateAudio,
+		watermark: false,
+	}
+	if (is25) body.output_format = outputFormat as 'mp4' | 'mov'
+	return body
+}
 
 export class SeedanceProvider implements VideoProvider {
 	name = 'Seedance'
@@ -21,21 +158,11 @@ export class SeedanceProvider implements VideoProvider {
 	}
 
 	async generateVideo(prompt: string, params?: Record<string, unknown>): Promise<GenerateVideoResult> {
-		const modelId = params?.modelId || 'doubao-seedance-2-0-260128'
-		const duration = parseInt(params?.duration || '5')
-		const ratio = params?.ratio || '16:9'
-		const resolution = params?.resolution || '720p'
-		const refImages: string[] = params?.refImages || []
-		const refAudios: string[] = params?.refAudios || []
-		const refVideos: string[] = params?.refVideos || []
-		const generateAudio = params?.generate_audio !== 'false'
-
-		if (refImages.length > 9) throw new Error('Seedance supports up to 9 reference images.')
-		if (refVideos.length > 3) throw new Error('Seedance supports up to 3 reference videos.')
-		if (refAudios.length > 3) throw new Error('Seedance supports up to 3 reference audio files.')
-
-		// Build content array
-		const content: unknown[] = []
+		const requestParams = params || {}
+		// Validate before any reference upload so an invalid task cannot create orphaned assets.
+		buildSeedanceRequestBody(prompt, requestParams)
+		const refImages = stringArrayParam(requestParams, 'refImages')
+		const preparedImages: string[] = []
 
 		// Add reference images
 		for (const dataUri of refImages) {
@@ -47,51 +174,17 @@ export class SeedanceProvider implements VideoProvider {
 			} else {
 				const match = dataUri.match(/^data:([^;]+);base64,(.+)$/)
 				if (match) {
-					// Upload to R2 to get a real URL (data URI too large for API)
+					// Upload through the temporary relay to get a public URL.
 					const binary = Uint8Array.from(atob(match[2]), c => c.charCodeAt(0))
 					const ext = match[1].includes('png') ? 'png' : 'jpg'
 					imageUrl = await uploadRef(undefined, binary.buffer, `ref.${ext}`, match[1])
 				}
 			}
 
-			content.push({
-				type: 'image_url',
-				image_url: { url: imageUrl },
-				role: 'reference_image',
-			})
+			preparedImages.push(imageUrl)
 		}
 
-		// Add reference audios
-		for (const audioUrl of refAudios) {
-			content.push({
-				type: 'audio_url',
-				audio_url: { url: audioUrl },
-				role: 'reference_audio',
-			})
-		}
-
-		// Add reference videos
-		for (const videoUrl of refVideos) {
-			content.push({
-				type: 'video_url',
-				video_url: { url: videoUrl },
-				role: 'reference_video',
-			})
-		}
-
-		// Add prompt text
-		content.push({ type: 'text', text: prompt })
-
-		// Create task
-		const requestBody = {
-			model: modelId,
-			content,
-			duration,
-			ratio,
-			resolution,
-			generate_audio: generateAudio,
-			watermark: false,
-		}
+		const requestBody = buildSeedanceRequestBody(prompt, { ...requestParams, refImages: preparedImages })
 		const response = await requestUrl({
 			url: this.baseUrl,
 			method: 'POST',
@@ -154,7 +247,13 @@ export class SeedanceProvider implements VideoProvider {
 	private async downloadVideo(url: string): Promise<string> {
 		const response = await requestUrl({ url })
 		const timestamp = Date.now()
-		const fileName = `vid_${timestamp}.mp4`
+		let extension = 'mp4'
+		try {
+			if (new URL(url).pathname.toLowerCase().endsWith('.mov')) extension = 'mov'
+		} catch {
+			// Provider result URLs are normally absolute; default to MP4 if parsing fails.
+		}
+		const fileName = `vid_${timestamp}.${extension}`
 		const filePath = `${this.outputDir}/${fileName}`
 
 		const adapter = this.app.vault.adapter
