@@ -46,6 +46,16 @@ When you add a model/provider, run the check; if it fails, fix the catalog rathe
 - Supported duration values are 4, 6, 8, and 10 seconds.
 - Supported resolution values are `720p`, `1080p`, and `4k`.
 
+## Volcengine and BytePlus Seedance 2.5
+
+- Bragi model ID: `seedance-2.5`; Volcengine model ID: `doubao-seedance-2-5-260628`; BytePlus model ID: `dreamina-seedance-2-5-260628`.
+- Volcengine submits to `POST https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks`; BytePlus submits to `POST https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks`. Both poll `GET /api/v3/contents/generations/tasks/{task_id}` through the existing `SeedanceProvider`.
+- Supported Bragi modes are text-to-video, first-frame, first-last-frame, image reference, video reference, video extension, and video edit. First-frame inputs use `role: first_frame`; the second image in first-last-frame uses `role: last_frame`; multimodal references use `reference_image`, `reference_video`, and `reference_audio`.
+- Multimodal limits are 30 images, 10 videos, and 10 audio clips (50 references total). Audio-only reference input is supported through `video-ref` mode.
+- Duration defaults to Auto (`-1`) and accepts `-1` or 4–30 seconds. Video edit only accepts `-1`. Ratio defaults to `adaptive`; first-frame, first-last-frame, video-extend, and video-edit only accept `adaptive`. Text/reference generation also accepts `16:9`, `4:3`, `1:1`, `3:4`, `9:16`, and `21:9`.
+- Output resolution is 480p or 720p. Output format is MP4 or MOV; preserve a `.mov` extension when the completed task returns a MOV URL.
+- Volcengine sends local reference media through temporary HTTPS relay URLs and passes manually bound `bytedance` `asset://` IDs through unchanged. With BytePlus native asset credentials, reference media uses the existing `asset://` flow; without those credentials, Bragi falls back to relay URLs. Face-containing media may still require a provider-approved asset.
+
 ## Kling 3.0 Omni
 
 - Bragi model ID: `kling-3.0-omni`; upstream model ID on both providers: `kling-v3-omni`.
