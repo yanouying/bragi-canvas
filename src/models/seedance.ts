@@ -15,6 +15,7 @@ export const seedance25: ModelConfig = {
 	name: 'Seedance 2.5',
 	type: 'video',
 	supportedProviders: {
+		bytedance: { apiModelId: 'doubao-seedance-2-5-260628' },
 		byteplus: {
 			apiModelId: 'dreamina-seedance-2-5-260628',
 			refDelivery: { image: 'native_asset', video: 'native_asset', audio: 'native_asset', nativeAssetProvider: 'byteplus' },

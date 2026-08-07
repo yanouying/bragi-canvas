@@ -122,6 +122,20 @@ try {
 	assert.equal(requests[0].headers.Authorization, 'Bearer test-key')
 	assert.equal(JSON.parse(requests[0].body).model, modelId)
 
+	const volcengineModelId = 'doubao-seedance-2-5-260628'
+	const volcengineProvider = new SeedanceProvider('volcengine-key', app, 'assets')
+	process.__bragiSeedanceRequestHandler = async (request) => {
+		requests.push(request)
+		return { status: 200, json: { id: 'volcengine-task-25' }, text: '' }
+	}
+	assert.deepEqual(await volcengineProvider.generateVideo('A kite crosses the sky', {
+		modelId: volcengineModelId,
+		genMode: 'text-to-video',
+	}), { done: false, taskId: 'volcengine-task-25' })
+	assert.equal(requests.at(-1).url, 'https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks')
+	assert.equal(requests.at(-1).headers.Authorization, 'Bearer volcengine-key')
+	assert.equal(JSON.parse(requests.at(-1).body).model, volcengineModelId)
+
 	process.__bragiSeedanceRequestHandler = async (request) => {
 		requests.push(request)
 		if (request.url.endsWith('/task-25')) {
@@ -142,10 +156,10 @@ try {
 		readFile('src/main.ts', 'utf8'),
 		readFile('docs/model-provider-rules.md', 'utf8'),
 	])
-	assert.match(modelSource, /id: 'seedance-2\.5'[\s\S]*apiModelId: 'dreamina-seedance-2-5-260628'/)
+	assert.match(modelSource, /id: 'seedance-2\.5'[\s\S]*bytedance: \{ apiModelId: 'doubao-seedance-2-5-260628' \}[\s\S]*apiModelId: 'dreamina-seedance-2-5-260628'/)
 	assert.match(modelSource, /modes: \['text-to-video', 'first-frame', 'first-last-frame', 'image-ref', 'video-ref', 'video-extend', 'video-edit'\]/)
 	assert.match(mainSource, /getSeedanceReferenceLimits\(model\.id\)/)
-	assert.match(providerRules, /## BytePlus Seedance 2\.5[\s\S]*dreamina-seedance-2-5-260628/)
+	assert.match(providerRules, /## Volcengine and BytePlus Seedance 2\.5[\s\S]*doubao-seedance-2-5-260628[\s\S]*dreamina-seedance-2-5-260628/)
 
 	console.log('Seedance 2.5 provider checks passed.')
 } finally {
