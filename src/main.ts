@@ -709,8 +709,10 @@ export default class BragiCanvas extends Plugin {
 			? imageMimeType(vaultPath)
 			: modality === 'video'
 				? videoMimeType(vaultPath)
-				: audioMimeType(vaultPath)
-		const ext = getFileExtension(vaultPath, modality === 'image' ? 'png' : modality === 'video' ? 'mp4' : 'mp3')
+				: modality === 'audio'
+					? audioMimeType(vaultPath)
+					: 'application/pdf'
+		const ext = getFileExtension(vaultPath, modality === 'image' ? 'png' : modality === 'video' ? 'mp4' : modality === 'audio' ? 'mp3' : 'pdf')
 
 		// native_asset reaches here only when no provider-native asset flow ran
 		// (e.g. credentials missing) — fall back to relay so generation still works.
@@ -766,7 +768,8 @@ export default class BragiCanvas extends Plugin {
 			// Seedance can consume provider-specific asset:// IDs.
 			const isSeedanceModel = model.id.startsWith('seedance')
 			const isMuleRouterWan = activeProvider === 'mulerouter' && model.id === 'wan-2.7'
-			const isDashScopeWan = activeProvider === 'dashscope' && model.id === 'wan-2.7'
+			const isDashScopeWan3 = activeProvider === 'dashscope' && model.id === 'wan-3.0'
+			const isDashScopeWan = activeProvider === 'dashscope' && (model.id === 'wan-2.7' || isDashScopeWan3)
 			const supportsApimartVideoRef = activeProvider === 'apimart' && model.id === 'omni-flash-ext'
 			const supportsKlingOmniVideoRef = model.id === 'kling-3.0-omni' && (activeProvider === 'kling' || activeProvider === 'apimart')
 			const isNativeSeedance = (activeProvider === 'bytedance' || activeProvider === 'byteplus') && isSeedanceModel
@@ -885,6 +888,11 @@ export default class BragiCanvas extends Plugin {
 					}
 				}
 			}
+
+			if (isDashScopeWan3 && uniquePdfs.length > 0) {
+				if (uniquePdfs.length > 1) throw new Error('Wan 3.0 supports at most 1 reference file.')
+				refPdfs.push(await this.prepareReferenceMedia(activeProvider, model, 'pdf', uniquePdfs[0]))
+			}
 			}
 
 			if (model.type === 'image') {
@@ -911,7 +919,7 @@ export default class BragiCanvas extends Plugin {
 					markNodeFailed(placeholder, `${activeProvider} doesn't support video generation`)
 					return
 				}
-				const videoResult = await provider.generateVideo(finalPrompt, { ...params, modelId: apiModelId, genMode: mode, refImages, refAudios, refVideos })
+				const videoResult = await provider.generateVideo(finalPrompt, { ...params, modelId: apiModelId, genMode: mode, refImages, refAudios, refVideos, refPdfs })
 
 				if (videoResult.done && videoResult.filePath) {
 					// Rare: synchronous completion
