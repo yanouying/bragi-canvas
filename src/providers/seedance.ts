@@ -4,8 +4,7 @@ import type { App } from 'obsidian'
 import { requestUrl } from 'obsidian'
 import { uploadRef } from './upload'
 import { getSeedanceReferenceLimits, isSeedance25ModelId } from '../seedance-capabilities'
-
-const DEFAULT_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks'
+import { normalizeSeedanceEndpoint, VOLCENGINE_SEEDANCE_ENDPOINT } from './seedance-endpoints'
 
 type SeedanceContent =
 	| { type: 'text'; text: string }
@@ -154,7 +153,7 @@ export class SeedanceProvider implements VideoProvider {
 		this.apiKey = apiKey
 		this.app = app
 		this.outputDir = outputDir
-		this.baseUrl = baseUrl || DEFAULT_BASE_URL
+		this.baseUrl = normalizeSeedanceEndpoint(baseUrl, VOLCENGINE_SEEDANCE_ENDPOINT)
 	}
 
 	async generateVideo(prompt: string, params?: Record<string, unknown>): Promise<GenerateVideoResult> {

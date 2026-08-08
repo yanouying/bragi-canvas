@@ -28,6 +28,7 @@ import { TokenRouterImageProvider, TokenRouterTextProvider, TokenRouterVideoProv
 import { Token360VideoProvider } from './token360'
 import { DashScopeAudioProvider, DashScopeVideoProvider, dashScopeUrl } from './dashscope'
 import { SvNewApiImageProvider, SvNewApiVideoProvider, SvNewApiAudioProvider, SVROUTER_BASE_URL } from './svnewapi'
+import { BYTEPLUS_SEEDANCE_ENDPOINT, normalizeSeedanceEndpoint } from './seedance-endpoints'
 
 const LUMA_ENDPOINT = 'https://luma.bragi.now'
 import { OpenAITextProvider, APIMartTextProvider, GeminiTextProvider, AnthropicTextProvider, BedrockClaudeTextProvider, XAITextProvider } from './text-gen'
@@ -90,6 +91,28 @@ async function testListModels(url: string, token: string): Promise<TestResult> {
 		})
 		if (resp.status === 200) return { ok: true, message: 'Connected.' }
 		if (resp.status === 401 || resp.status === 403) return { ok: false, message: 'Invalid API key.' }
+		return { ok: false, message: `Unexpected status ${resp.status}.` }
+	} catch (err: unknown) {
+		return { ok: false, message: `Network error: ${err?.message || err}` }
+	}
+}
+
+async function testSeedanceEndpoint(url: string, token: string): Promise<TestResult> {
+	try {
+		const resp = await requestUrl({
+			url,
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${token}`,
+			},
+			// Deliberately invalid body: a client error proves the endpoint and auth
+			// are reachable without creating a billable generation task.
+			body: '{}',
+			throw: false,
+		})
+		if (resp.status === 401 || resp.status === 403) return { ok: false, message: 'Invalid API key.' }
+		if (resp.status >= 200 && resp.status < 500 && resp.status !== 404) return { ok: true, message: 'Connected.' }
 		return { ok: false, message: `Unexpected status ${resp.status}.` }
 	} catch (err: unknown) {
 		return { ok: false, message: `Network error: ${err?.message || err}` }
@@ -241,6 +264,7 @@ export const PROVIDERS: ProviderSpec[] = [
 		docUrl: 'https://console.byteplus.com/ark',
 		fields: [
 			{ key: 'byteplus', label: 'ARK API Key', placeholder: '...', type: 'password' },
+			{ key: 'byteplusSeedanceEndpoint', label: 'Seedance endpoint', placeholder: BYTEPLUS_SEEDANCE_ENDPOINT, type: 'text' },
 			{ key: 'byteplusAccessKey', label: 'Access Key (optional)', placeholder: 'AK...', type: 'password' },
 			{ key: 'byteplusSecretKey', label: 'Secret Key (optional)', placeholder: 'SK...', type: 'password' },
 			{ key: 'byteplusAssetGroupId', label: 'Asset group ID (optional)', placeholder: 'group-2026...-xxxxx', type: 'text' },
@@ -251,8 +275,11 @@ export const PROVIDERS: ProviderSpec[] = [
 		makeImage: ({ settings, app, outputDir }) =>
 			new SeedreamProvider(settings.providers.byteplus, app, outputDir, 'https://ark.ap-southeast.bytepluses.com/api/v3/images/generations'),
 		makeVideo: ({ settings, app, outputDir }) =>
-			new SeedanceProvider(settings.providers.byteplus, app, outputDir, 'https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks'),
-		testConnection: (d) => testListModels('https://ark.ap-southeast.bytepluses.com/api/v3/models', d.byteplus || ''),
+			new SeedanceProvider(settings.providers.byteplus, app, outputDir, settings.providers.byteplusSeedanceEndpoint),
+		testConnection: (d) => testSeedanceEndpoint(
+			normalizeSeedanceEndpoint(d.byteplusSeedanceEndpoint, BYTEPLUS_SEEDANCE_ENDPOINT),
+			d.byteplus || '',
+		),
 	},
 	{
 		id: 'kling',

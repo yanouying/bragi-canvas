@@ -11,6 +11,7 @@ import { ProviderModelsModal } from './ui/provider-models-modal'
 import { removeProvider } from './ui/remove-provider-modal'
 import { migrateSettings } from './settings-migrations'
 import { DEFAULT_DENOISE_SERVICE_URL } from './denoise'
+import { BYTEPLUS_SEEDANCE_ENDPOINT } from './providers/seedance-endpoints'
 
 /** Legacy map kept because `renderModelGroup` looks up display names by id. */
 const PROVIDER_DISPLAY_NAMES: Record<string, string> = (() => {
@@ -95,6 +96,7 @@ export interface BragiSettings {
 		bedrockRegion: string
 		bytedance: string
 		byteplus: string
+			byteplusSeedanceEndpoint: string
 			byteplusAccessKey: string
 			byteplusSecretKey: string
 			byteplusAssetGroupId: string
@@ -171,6 +173,7 @@ export const DEFAULT_SETTINGS: BragiSettings = {
 		bedrockRegion: 'us-east-1',
 		bytedance: '',
 		byteplus: '',
+			byteplusSeedanceEndpoint: BYTEPLUS_SEEDANCE_ENDPOINT,
 			byteplusAccessKey: '',
 			byteplusSecretKey: '',
 			byteplusAssetGroupId: '',
