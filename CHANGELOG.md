@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 1.34.1
+
+- Added a configurable BytePlus Seedance task endpoint in provider settings.
+- Applied the configured BytePlus endpoint to Seedance 2.0, Seedance 2.0 Fast, and Seedance 2.5 task submission and polling.
+- Kept the current BytePlus Singapore endpoint as the default and made connection tests use the configured endpoint.
+- Added BytePlus Seedance endpoint regression coverage.
+- Bumped the plugin version to `1.34.1`.
+
 ## 1.34.0
 
 - Added Seedance 2.5 video generation for Volcengine and BytePlus.
