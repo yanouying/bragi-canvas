@@ -10,7 +10,7 @@ import { DEFAULT_SETTINGS, type BragiSettings, type GeneratedAssetRecord, type L
 
 type UnknownRecord = Record<string, unknown>
 
-export const CURRENT_SETTINGS_SCHEMA_VERSION = 11
+export const CURRENT_SETTINGS_SCHEMA_VERSION = 12
 const PROVIDER_MODEL_PREFS_SCHEMA_VERSION = 2
 
 export interface SettingsMigrationResult {
@@ -517,6 +517,15 @@ function migrateDashScopeWan27(settings: BragiSettings, previousVersion: number)
 	}
 }
 
+function migrateSeedance25SvRouter(settings: BragiSettings, previousVersion: number): void {
+	if (previousVersion >= 12) return
+	if (!settings.providers.svnewapi?.trim()) return
+	const modelId = 'seedance-2.5'
+	const pref = settings.modelPrefs[modelId]
+	if (pref?.enabled !== true) return
+	connectProviderToModel(settings, 'svnewapi', modelId)
+}
+
 const RECOGNIZABLE_KEYS = [
 	'settingsSchemaVersion',
 	'outputDir',
@@ -568,6 +577,7 @@ export function migrateSettings(
 	migrateProviderPrefs19(settings)
 	migrateProviderModelPrefs(settings, previousVersion)
 	migrateDashScopeWan27(settings, previousVersion)
+	migrateSeedance25SvRouter(settings, previousVersion)
 	settings.settingsSchemaVersion = CURRENT_SETTINGS_SCHEMA_VERSION
 
 	const valid = options.strict ? errors.length === 0 : true

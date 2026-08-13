@@ -151,15 +151,27 @@ try {
 	assert.equal(writes.length, 1)
 	assert.deepEqual([...new Uint8Array(writes[0].data)], [1, 2, 3])
 
-	const [modelSource, mainSource, providerRules] = await Promise.all([
+	const [modelSource, mainSource, providerRules, migrationsSource] = await Promise.all([
 		readFile('src/models/seedance.ts', 'utf8'),
 		readFile('src/main.ts', 'utf8'),
 		readFile('docs/model-provider-rules.md', 'utf8'),
+		readFile('src/settings-migrations.ts', 'utf8'),
 	])
 	assert.match(modelSource, /id: 'seedance-2\.5'[\s\S]*bytedance: \{ apiModelId: 'doubao-seedance-2-5-260628' \}[\s\S]*apiModelId: 'dreamina-seedance-2-5-260628'/)
+	assert.match(modelSource, /id: 'seedance-2\.5'[\s\S]*svnewapi: \{ apiModelId: 'sv-seedance-2\.5' \}/)
 	assert.match(modelSource, /modes: \['text-to-video', 'first-frame', 'first-last-frame', 'image-ref', 'video-ref', 'video-extend', 'video-edit'\]/)
 	assert.match(mainSource, /getSeedanceReferenceLimits\(model\.id\)/)
 	assert.match(providerRules, /## Volcengine and BytePlus Seedance 2\.5[\s\S]*doubao-seedance-2-5-260628[\s\S]*dreamina-seedance-2-5-260628/)
+	assert.match(migrationsSource, /CURRENT_SETTINGS_SCHEMA_VERSION = 12/)
+	assert.match(
+		migrationsSource,
+		/function migrateSeedance25SvRouter[\s\S]*const modelId = 'seedance-2\.5'[\s\S]*connectProviderToModel\(settings, 'svnewapi', modelId\)/,
+	)
+	assert.doesNotMatch(
+		migrationsSource.match(/function migrateSeedance25SvRouter[\s\S]*?\n}/)?.[0] || '',
+		/selectedProvider/,
+		'Seedance 2.5 SVRouter migration must not change the active provider.',
+	)
 
 	console.log('Seedance 2.5 provider checks passed.')
 } finally {

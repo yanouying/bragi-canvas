@@ -219,7 +219,7 @@ try {
 	assert.match(settingsSource, /pika: ''/, 'Default settings must include an empty Pika key.')
 	assert.match(
 		migrationsSource,
-		/CURRENT_SETTINGS_SCHEMA_VERSION = 11/,
+		/CURRENT_SETTINGS_SCHEMA_VERSION = (1[2-9]|[2-9]\d+)/,
 		'Adding a provider credential must advance the settings schema version.',
 	)
 	assert.match(

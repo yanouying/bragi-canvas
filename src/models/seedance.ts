@@ -20,6 +20,7 @@ export const seedance25: ModelConfig = {
 			apiModelId: 'dreamina-seedance-2-5-260628',
 			refDelivery: { image: 'native_asset', video: 'native_asset', audio: 'native_asset', nativeAssetProvider: 'byteplus' },
 		},
+		svnewapi: { apiModelId: 'sv-seedance-2.5' },
 	},
 	modes: ['text-to-video', 'first-frame', 'first-last-frame', 'image-ref', 'video-ref', 'video-extend', 'video-edit'],
 	params: [
