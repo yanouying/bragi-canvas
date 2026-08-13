@@ -12,8 +12,26 @@ assert.match(
 
 assert.match(
 	source,
-	/if \(modelId === SV_VIDEO_SEEDANCE\) \{[\s\S]*?if \(duration\) metadata\.duration = duration === '-1' \? -1 : parseInt\(duration, 10\)/,
+	/if \(SV_VIDEO_SEEDANCE_RE\.test\(modelId\)\) \{[\s\S]*?if \(duration\) metadata\.duration = duration === '-1' \? -1 : parseInt\(duration, 10\)/,
 	'SV NewAPI Seedance must forward Auto duration as metadata.duration = -1 to match direct Ark Seedance.',
+)
+
+assert.match(
+	source,
+	/const SV_VIDEO_SEEDANCE_RE = \/\^sv-seedance-2\\\.\(\?:0\|5\)\(\?:-\|\$\)\//,
+	'SV NewAPI Seedance special handling must include Seedance 2.0 and 2.5 virtual models.',
+)
+
+assert.match(
+	source,
+	/if \(genMode\) \{[\s\S]*?body\.mode = genMode[\s\S]*?metadata\.genMode = genMode[\s\S]*?\}[\s\S]*?if \(outputFormat\) metadata\.output_format = outputFormat/,
+	'SV NewAPI Seedance must forward mode and output_format through the gateway metadata contract.',
+)
+
+assert.match(
+	source,
+	/metadata\.generate_audio = params\.generate_audio !== false && params\.generate_audio !== 'false'/,
+	'SV NewAPI Seedance must preserve boolean false generate_audio values.',
 )
 
 assert.match(

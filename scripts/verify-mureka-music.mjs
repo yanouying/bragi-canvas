@@ -216,7 +216,7 @@ try {
 	assert.match(mainSource, /outputType: 'audio'/, 'Async audio snapshots must persist outputType.')
 	assert.match(panelSource, /model\?\.id === 'mureka-music' && params\.generation_mode === 'lyrics'/, 'Mureka lyrics mode must share the upstream lyrics guard.')
 	assert.match(settingsSource, /mureka: string/, 'Settings must include the Mureka credential.')
-	assert.match(migrationsSource, /CURRENT_SETTINGS_SCHEMA_VERSION = 11/, 'Adding Mureka must advance the settings schema version.')
+	assert.match(migrationsSource, /CURRENT_SETTINGS_SCHEMA_VERSION = (1[2-9]|[2-9]\d+)/, 'Adding Mureka must advance the settings schema version.')
 
 	console.log('Mureka music and async audio queue checks passed.')
 } finally {
