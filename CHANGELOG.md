@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 1.34.2
+
+- Added SVRouter support for Seedance 2.5 through `sv-seedance-2.5`.
+- Forwarded SVRouter Seedance 2.5 mode and output format through gateway metadata.
+- Added a settings migration that backfills the Seedance 2.5 SVRouter provider connection without changing the active provider.
+- Expanded Seedance 2.5 and SV NewAPI video parameter regression coverage.
+- Bumped the plugin version to `1.34.2`.
+
 ## 1.34.1
 
 - Added a configurable BytePlus Seedance task endpoint in provider settings.
