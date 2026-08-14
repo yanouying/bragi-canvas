@@ -46,6 +46,18 @@ When you add a model/provider, run the check; if it fails, fix the catalog rathe
 - Supported duration values are 4, 6, 8, and 10 seconds.
 - Supported resolution values are `720p`, `1080p`, and `4k`.
 
+## APIMart MiniMax-H3
+
+- Bragi model ID: `minimax-h3`; APIMart model ID: `MiniMax-H3`.
+- Submit with `POST https://api.apimart.ai/v1/videos/generations`; poll with `GET https://api.apimart.ai/v1/tasks/{task_id}` and read the completed URL from `result.videos[0].url`.
+- Supported Bragi modes are `text-to-video`, `first-frame`, `first-last-frame`, `image-ref`, and `video-ref`. APIMart infers its upstream mode from the submitted reference fields; do not send a `mode` field.
+- `first-frame` and `first-last-frame` use `first_frame_image` / `last_frame_image`. They require exactly one or two ordered images, ignore aspect ratio, and cannot include reference image/video/audio fields.
+- `image-ref` sends up to 9 images in `image_urls` and may add up to 3 `audio_urls`. `video-ref` sends up to 3 `video_urls` and may combine them with up to 9 images and 3 audios. Audio cannot be the only reference modality.
+- Every image, video, and audio reference must be re-uploaded through Bragi Relay. The APIMart request receives only temporary HTTPS URLs; never send data URIs or arbitrary external URLs directly.
+- Prompt is required in every mode and must not exceed 7000 characters. Duration is a whole number from 4 through 15. Resolution is `2K` or `768P`.
+- Ratios are `21:9`, `16:9`, `4:3`, `1:1`, `3:4`, and `9:16`. `adaptive` is accepted for reference generation; text-to-video normalizes it to `16:9`, while frame-controlled modes omit the field.
+- `watermark` is a boolean and defaults to `false`. Webhooks are intentionally not exposed in the canvas model because Bragi's persistent task queue already owns completion tracking.
+
 ## Volcengine and BytePlus Seedance 2.5
 
 - Bragi model ID: `seedance-2.5`; Volcengine model ID: `doubao-seedance-2-5-260628`; BytePlus model ID: `dreamina-seedance-2-5-260628`.

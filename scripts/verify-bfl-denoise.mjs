@@ -47,7 +47,7 @@ assert.match(
 )
 assert.match(
 	panelSource,
-	/modes\.length <= 1 \|\| selectedModel\.inferModeFromInputs[\s\S]*inferMode\(modes, upstreamImageCount, upstreamVideoCount\)/,
+	/modes\.length <= 1 \|\| selectedModel\.inferModeFromInputs[\s\S]*inferMode\(modes, upstreamImageCount, upstreamVideoCount, upstreamAudioCount\)/,
 	'The generation bar must hide inferred mode selectors while preserving upstream mode inference.',
 )
 assert.match(

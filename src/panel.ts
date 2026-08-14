@@ -238,7 +238,11 @@ function supportsVoiceSource(model: ModelConfig, source: VoiceMode): boolean {
  * Infer the best default mode based on upstream inputs and model's supported modes.
  * Falls through priorities — if the model doesn't support a mode, skip it.
  */
-function inferMode(modes: Mode[], imageCount: number, videoCount: number): Mode {
+function inferMode(modes: Mode[], imageCount: number, videoCount: number, audioCount = 0): Mode {
+	// Audio refs are multimodal references, never first/last-frame controls.
+	if (audioCount > 0 && videoCount > 0 && modes.includes('video-ref')) return 'video-ref'
+	if (audioCount > 0 && imageCount > 0 && modes.includes('image-ref')) return 'image-ref'
+
 	// Image + video upstream → Kling Motion Control (character image + motion clip)
 	if (imageCount > 0 && videoCount > 0 && modes.includes('motion-control')) return 'motion-control'
 
@@ -547,13 +551,13 @@ export function showGenerateBar(
 		if (!selectedModel || modes.length <= 1 || selectedModel.inferModeFromInputs) {
 			modeSelect.classList.add('bragi-hidden')
 			selectedMode = selectedModel?.inferModeFromInputs
-				? inferMode(modes, upstreamImageCount, upstreamVideoCount)
+				? inferMode(modes, upstreamImageCount, upstreamVideoCount, upstreamAudioCount)
 				: modes[0] || null
 			return
 		}
 
 		modeSelect.classList.remove('bragi-hidden')
-		const inferred = inferMode(modes, upstreamImageCount, upstreamVideoCount)
+		const inferred = inferMode(modes, upstreamImageCount, upstreamVideoCount, upstreamAudioCount)
 
 		for (const mode of modes) {
 			const opt = createEl('option')

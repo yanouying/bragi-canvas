@@ -22,6 +22,7 @@
     "test:mulerouter-carrothub": "node scripts/verify-mulerouter-carrothub-images.mjs",
     "test:reference-image-upload": "node scripts/verify-reference-image-upload.mjs",
     "test:kling-omni": "node scripts/verify-kling-omni.mjs",
+    "test:apimart-minimax-h3": "node scripts/verify-apimart-minimax-h3.mjs",
     "test:suchuang-gemini-omni": "node scripts/verify-suchuang-gemini-omni.mjs",
     "test:svnewapi-audio-params": "node scripts/verify-svnewapi-audio-params.mjs",
     "test:elevenlabs-voice-changer": "node scripts/verify-elevenlabs-voice-changer.mjs",

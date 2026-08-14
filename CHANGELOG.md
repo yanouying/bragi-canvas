@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added MiniMax-H3 video generation through APIMart with text-to-video, first-frame, first-last-frame, image-reference, and video-reference modes.
+- Added MiniMax-H3 image/video/audio Relay handling, strict frame-versus-reference validation, 4–15 second duration, 2K/768P output, adaptive/fixed ratios, and optional watermarking.
+- Added APIMart MiniMax-H3 request, relay, async polling, error, catalog, and documentation regression coverage.
+
 ## 1.34.2
 
 - Added SVRouter support for Seedance 2.5 through `sv-seedance-2.5`.
