@@ -37,9 +37,11 @@ const providerStub = {
 }
 
 try {
+	const bytePlusAssetsPath = path.resolve('src/providers/byteplus-assets.ts')
+	const svNewApiAssetFlowPath = path.resolve('src/svnewapi-asset-flow.ts')
 	await writeFile(entry, `
-		import { waitForActive as waitForBytePlusActive } from '${path.resolve('src/providers/byteplus-assets.ts').replaceAll('\\', '\\\\')}'
-		import { ensureSvNewApiAsset } from '${path.resolve('src/svnewapi-asset-flow.ts').replaceAll('\\', '\\\\')}'
+		import { waitForActive as waitForBytePlusActive } from ${JSON.stringify(bytePlusAssetsPath)}
+		import { ensureSvNewApiAsset } from ${JSON.stringify(svNewApiAssetFlowPath)}
 
 		export async function runBytePlusWait() {
 			globalThis.__bragiRequestUrl = async () => ({

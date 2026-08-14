@@ -546,7 +546,7 @@ export const PROVIDERS: ProviderSpec[] = [
 		name: 'APIMart',
 		docUrl: 'https://docs.apimart.ai/en/api-reference/videos/kling-v3-omni/generation',
 		fields: [{ key: 'apimart', label: 'API Key', placeholder: 'sk-...', type: 'password' }],
-		defaultRefDelivery: { image: 'relay', video: 'relay' },
+		defaultRefDelivery: { image: 'relay', video: 'relay', audio: 'relay' },
 		isConfigured: (s) => !!s.providers.apimart,
 		makeImage: ({ settings, app, outputDir }) =>
 			new APIMartProvider(settings.providers.apimart, app, outputDir),
