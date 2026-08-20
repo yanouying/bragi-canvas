@@ -36,7 +36,8 @@
     "test:mureka-music": "node scripts/verify-mureka-music.mjs",
     "test:dashscope-wan3": "node scripts/verify-dashscope-wan3.mjs",
     "test:seedance-2-5": "node scripts/verify-seedance-2-5.mjs",
-    "test:byteplus-seedance-endpoint": "node scripts/verify-byteplus-seedance-endpoint.mjs"
+    "test:byteplus-seedance-endpoint": "node scripts/verify-byteplus-seedance-endpoint.mjs",
+    "test:xai-grok": "node scripts/verify-xai-grok.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

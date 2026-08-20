@@ -36,6 +36,11 @@ export interface ParamOption {
 
 export interface ModelParamProviderOverride {
 	options?: ParamOption[]
+	/**
+	 * Provider-specific mode option sets. Replaces the base `optionsByMode` map
+	 * for this provider after the provider override is applied.
+	 */
+	optionsByMode?: Record<string, ParamOption[]>
 	default?: string | number
 	min?: number
 	max?: number

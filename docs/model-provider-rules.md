@@ -17,7 +17,7 @@ Everything that makes a provider differ from the base model lives in its `suppor
 - `editableApiModelId?: boolean` — opt-in. Set `true` to expose the pencil editor for providers that accept arbitrary upstream model ids (e.g. BytePlus C-Dance). Ignored when `aggregated` is set.
 - `aggregated?: boolean` — the provider routes the model's modes to multiple upstream ids internally (e.g. DashScope Wan 2.7 -> t2v/i2v/r2v/videoedit; DashScope voice -> tts/enrollment models). Routing stays hard-coded in the provider; the catalog only marks it. Aggregated locks the id editor and shows a static label. Must not also set `editableApiModelId`.
 - `modes?: Mode[]` — restrict this provider to a subset of the model's `modes`. The mode dropdown and MCP schema only show the active provider's effective modes; unsupported modes are hidden (never shown as disabled / "not supported"). Provider resolution is strict-to-active — there is no mode-based provider fallback.
-- Param `providerOverrides[providerId]` — narrow a param's `options`/`default`/`min`/`max`/`step`/`unit` for one provider, or set `hidden: true` to drop the param entirely for that provider (e.g. MuleRouter Wan 2.7 omits `ratio` and uses lowercase resolutions).
+- Param `providerOverrides[providerId]` — narrow a param's `options`/`optionsByMode`/`default`/`min`/`max`/`step`/`unit` for one provider, or set `hidden: true` to drop it entirely for that provider (e.g. MuleRouter Wan 2.7 omits `ratio`; xAI Grok Video 1.5 extends reference-to-video duration to 15 seconds while the legacy fal route remains capped at 10).
 
 Example: Wan 2.7 (`src/models/wan.ts`) is one model with DashScope (aggregated, all modes) and MuleRouter (`modes: ['first-frame']`, lowercase resolution override, hidden `ratio`).
 
