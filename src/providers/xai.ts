@@ -30,6 +30,28 @@ function stringValue(value: unknown): string {
 	return ''
 }
 
+function stringArray(value: unknown): string[] {
+	return Array.isArray(value)
+		? value.filter((item): item is string => typeof item === 'string' && item.length > 0)
+		: []
+}
+
+function integerValue(value: unknown, fallback: number): number {
+	if (value === undefined || value === null || value === '') return fallback
+	const parsed = typeof value === 'number' ? value : Number.parseInt(stringValue(value), 10)
+	return parsed
+}
+
+const XAI_IMAGE_MODEL = 'grok-imagine-image-2.0'
+const XAI_VIDEO_MODEL = 'grok-imagine-video-1.5'
+const XAI_LEGACY_VIDEO_MODEL = 'grok-imagine-video'
+const XAI_IMAGE_RATIOS = new Set([
+	'auto', '1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '2:1', '1:2',
+	'19.5:9', '9:19.5', '20:9', '9:20',
+])
+const XAI_VIDEO_RATIOS = new Set(['16:9', '9:16', '1:1', '4:3', '3:4', '3:2', '2:3'])
+const XAI_VIDEO_RESOLUTIONS = new Set(['480p', '720p', '1080p'])
+
 function normalizeXaiVoice(record: Record<string, unknown>, source: VoiceOption['source']): VoiceOption | null {
 	const id = stringValue(record.voice_id || record.id)
 	if (!id) return null
@@ -50,10 +72,9 @@ function normalizeXaiVoice(record: Record<string, unknown>, source: VoiceOption[
  *
  * Endpoints:
  *   POST /v1/images/generations   — text-to-image, sync, returns hosted jpeg URL
- *   POST /v1/images/edits          — image-ref editing (up to 5 refs)
+ *   POST /v1/images/edits          — image-ref editing (up to 3 refs)
  *
- * Models: grok-imagine-image ($0.02), grok-imagine-image-quality ($0.04, recommended),
- * grok-imagine-image-pro ($0.07, deprecated but still live).
+ * Model: grok-imagine-image-2.0.
  */
 export class XAIImageProvider implements ImageProvider {
 	name = 'xAI'
@@ -68,30 +89,38 @@ export class XAIImageProvider implements ImageProvider {
 	}
 
 	async generateImage(prompt: string, params?: Record<string, unknown>): Promise<GenerateImageResult> {
-		// `quality` param (quality|normal) overrides the default apiModelId so we can expose one
-		// "Grok Imagine" card in the UI but still hit the right tier on xAI.
-		const tier = params?.quality === 'normal' ? 'grok-imagine-image' : 'grok-imagine-image-quality'
-		const modelId = tier
-		const aspectRatio = params?.aspectRatio || '1:1'
-		const refImages: string[] = params?.refImages || []
+		const modelId = stringValue(params?.modelId) || XAI_IMAGE_MODEL
+		const aspectRatio = stringValue(params?.aspectRatio) || 'auto'
+		const resolution = stringValue(params?.resolution) || '1k'
+		const quality = stringValue(params?.quality) || 'medium'
+		const refImages = stringArray(params?.refImages)
+
+		if (!XAI_IMAGE_RATIOS.has(aspectRatio)) throw new Error(`xAI: unsupported image aspect ratio ${aspectRatio}`)
+		if (resolution !== '1k' && resolution !== '2k') throw new Error('xAI: image resolution must be 1k or 2k')
+		if (quality !== 'low' && quality !== 'medium') throw new Error('xAI: image quality must be low or medium')
+		if (refImages.length > 3) throw new Error('xAI: Grok Imagine 2.0 supports at most 3 reference images')
 
 		const isEdit = refImages.length > 0
 		const url = isEdit ? `${XAI_BASE}/images/edits` : `${XAI_BASE}/images/generations`
 
-		const body: unknown = {
+		const body: Record<string, unknown> = {
 			model: modelId,
 			prompt,
 			n: 1,
-			aspect_ratio: aspectRatio,
+			resolution,
+			quality,
 			response_format: 'url',
 		}
+		// Omitting auto preserves the first input image's ratio for editing and lets
+		// the model choose a ratio for text-to-image.
+		if (aspectRatio !== 'auto') body.aspect_ratio = aspectRatio
 
 		if (isEdit) {
 			// xAI accepts EITHER `image` (single) OR `images` (array) — sending both → 400.
 			if (refImages.length === 1) {
 				body.image = toImageUrlStruct(refImages[0])
 			} else {
-				body.images = refImages.slice(0, 5).map(toImageUrlStruct)
+				body.images = refImages.map(toImageUrlStruct)
 			}
 		}
 
@@ -125,10 +154,11 @@ export class XAIImageProvider implements ImageProvider {
 }
 
 /**
- * xAI Grok Imagine video — one model, three modes routed via field selection:
+ * xAI Grok Imagine Video 1.5 — one model, five modes routed via field selection:
  *   text-to-video:       /v1/videos/generations  { prompt }
  *   first-frame (image): /v1/videos/generations  { prompt, image:{url} }
  *   image-ref:           /v1/videos/generations  { prompt, reference_images:[{url},…] }
+ *   video-edit:          /v1/videos/edits        { prompt, video:{url} }
  *   video-extend:        /v1/videos/extensions   { prompt, video:{url}, duration:2–10 }
  *
  * All async: POST returns {request_id}; poll GET /v1/videos/{id} (202 pending / 200 done).
@@ -146,46 +176,62 @@ export class XAIVideoProvider implements VideoProvider {
 	}
 
 	async generateVideo(prompt: string, params?: Record<string, unknown>): Promise<GenerateVideoResult> {
-		const modelId = params?.modelId || 'grok-imagine-video'
-		const aspectRatio = params?.aspect_ratio || params?.aspectRatio || '16:9'
-		let duration = parseInt(params?.duration || params?.durationSeconds || '5')
-		const resolution = params?.resolution || '720p'
-		const refImages: string[] = params?.refImages || []
-		const refVideos: string[] = params?.refVideos || []
-		const genMode = params?.genMode || 'text-to-video'
+		const modelId = stringValue(params?.modelId) || XAI_VIDEO_MODEL
+		const aspectRatio = stringValue(params?.aspect_ratio || params?.aspectRatio) || '16:9'
+		const duration = integerValue(params?.duration ?? params?.durationSeconds, 5)
+		const resolution = stringValue(params?.resolution) || '720p'
+		const refImages = stringArray(params?.refImages)
+		const refVideos = stringArray(params?.refVideos)
+		const genMode = stringValue(params?.genMode) || 'text-to-video'
+		const allowedModes = new Set(['text-to-video', 'first-frame', 'image-ref', 'video-edit', 'video-extend'])
 
-		// Per-mode duration caps (verified against live API, 2026-05-07):
-		//   text-to-video / first-frame / video-extend: 1–15s
-		//   reference-to-video:                         1–10s
-		if (genMode === 'image-ref' && duration > 10) duration = 10
+		if (!allowedModes.has(genMode)) throw new Error(`xAI: unsupported Grok Video mode ${genMode}`)
 
-		const body: unknown = {
-			model: modelId,
-			prompt,
-			aspect_ratio: aspectRatio,
-			duration,
-			resolution,
-		}
-
+		// Video 1.5 supports generation, first-frame, and reference-to-video. The
+		// official edit/extension endpoints still reject 1.5 and require the legacy
+		// Grok video model, so the xAI catalogue entry is intentionally aggregated.
+		const requestModelId = genMode === 'video-edit' || genMode === 'video-extend'
+			? XAI_LEGACY_VIDEO_MODEL
+			: modelId
+		const body: Record<string, unknown> = { model: requestModelId, prompt }
 		let endpoint = `${XAI_BASE}/videos/generations`
 
-		if (genMode === 'video-extend') {
-			if (refVideos.length === 0) {
-				throw new Error('xAI video-extend requires an upstream video URL.')
+		if (genMode === 'video-edit' || genMode === 'video-extend') {
+			if (refVideos.length !== 1) throw new Error(`xAI ${genMode} requires exactly one upstream video.`)
+			if (refImages.length > 0) throw new Error(`xAI ${genMode} does not accept reference images.`)
+			if (genMode === 'video-edit') {
+				endpoint = `${XAI_BASE}/videos/edits`
+			} else {
+				if (!Number.isInteger(duration) || duration < 2 || duration > 10) {
+					throw new Error('xAI video-extend duration must be a whole number from 2 to 10 seconds')
+				}
+				endpoint = `${XAI_BASE}/videos/extensions`
+				body.duration = duration
 			}
-			endpoint = `${XAI_BASE}/videos/extensions`
-			body.video = { url: refVideos[0] }
-			// aspect_ratio/resolution are ignored on extend; the server follows the source video.
-		} else if (genMode === 'first-frame') {
-			if (refImages.length === 0) throw new Error('xAI first-frame requires one reference image.')
-			// Data: URIs must be uploaded first — xAI rejects data:-uri for image field in practice
-			// (server sometimes accepts it inline, sometimes rejects as too large). Upload to Bragi
-			// Relay to be safe + keep request bodies small.
-			body.image = { url: await this.ensureUrl(refImages[0]) }
-		} else if (genMode === 'image-ref') {
-			if (refImages.length === 0) throw new Error('xAI image-ref requires at least one reference image.')
-			const urls = await Promise.all(refImages.slice(0, 3).map(r => this.ensureUrl(r)))
-			body.reference_images = urls.map(u => ({ url: u }))
+			body.video = { url: await this.ensureUrl(refVideos[0]) }
+		} else {
+			if (!Number.isInteger(duration) || duration < 1 || duration > 15) {
+				throw new Error('xAI: video duration must be a whole number from 1 to 15 seconds')
+			}
+			if (!XAI_VIDEO_RATIOS.has(aspectRatio)) throw new Error(`xAI: unsupported video aspect ratio ${aspectRatio}`)
+			if (!XAI_VIDEO_RESOLUTIONS.has(resolution)) throw new Error(`xAI: unsupported video resolution ${resolution}`)
+			if (refVideos.length > 0) throw new Error(`xAI ${genMode} does not accept reference videos.`)
+			body.duration = duration
+			body.aspect_ratio = aspectRatio
+			body.resolution = resolution
+
+			if (genMode === 'text-to-video') {
+				if (refImages.length > 0) throw new Error('xAI text-to-video does not accept reference images.')
+			} else if (genMode === 'first-frame') {
+				if (refImages.length !== 1) throw new Error('xAI first-frame requires exactly one reference image.')
+				body.image = { url: await this.ensureUrl(refImages[0]) }
+			} else {
+				if (refImages.length === 0) throw new Error('xAI image-ref requires at least one reference image.')
+				if (refImages.length > 7) throw new Error('xAI image-ref supports at most 7 reference images.')
+				if (resolution === '1080p') throw new Error('xAI image-ref supports up to 720p resolution.')
+				const urls = await Promise.all(refImages.map(ref => this.ensureUrl(ref)))
+				body.reference_images = urls.map(url => ({ url }))
+			}
 		}
 
 		const resp = await requestUrl({
@@ -223,7 +269,9 @@ export class XAIVideoProvider implements VideoProvider {
 		const status = body?.status
 		if (status === 'pending') return { done: false, taskId }
 		if (status === 'failed' || status === 'expired') {
-			throw new Error(`xAI: video ${status} — ${body?.error?.message || 'no reason provided'}`)
+			const code = stringValue(body?.error?.code)
+			const message = stringValue(body?.error?.message) || 'no reason provided'
+			throw new Error(`xAI: video ${status}${code ? ` [${code}]` : ''} — ${message}`)
 		}
 		if (status === 'done') {
 			const videoUrl = body?.video?.url
@@ -239,14 +287,17 @@ export class XAIVideoProvider implements VideoProvider {
 		return { done: false, taskId }
 	}
 
-	/** Accept data: URI or http(s) URL; upload data URIs to Bragi temporary storage for a short public URL. */
+	/** Accept a data URI or http(s) URL; upload data URIs to Bragi temporary storage. */
 	private async ensureUrl(ref: string): Promise<string> {
 		if (/^https?:/.test(ref)) return ref
 		const match = ref.match(/^data:([^;]+);base64,(.+)$/)
-		if (!match) throw new Error('xAI: unsupported reference image format')
+		if (!match) throw new Error('xAI: unsupported reference media format')
 		const mime = match[1]
 		const bytes = Uint8Array.from(atob(match[2]), c => c.charCodeAt(0))
-		const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg'
+		const ext = mime.includes('png') ? 'png'
+			: mime.includes('webp') ? 'webp'
+				: mime.includes('video') ? 'mp4'
+					: 'jpg'
 		return uploadRef(undefined, bytes.buffer, `ref.${ext}`, mime)
 	}
 }
