@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 1.36.0
+
+- Upgraded the native xAI Grok Imagine image route to `grok-imagine-image-2.0` while preserving the stable Bragi `grok-imagine` model ID.
+- Added xAI Image 2.0 aspect ratio, 1K/2K resolution, and Low/Medium quality controls with provider-scoped fal.ai compatibility.
+- Upgraded Grok Video generation to `grok-imagine-video-1.5` for text-to-video, first-frame, and image-reference modes while keeping legacy xAI edit and extension routing.
+- Added xAI Grok provider, catalog, mode, payload, polling, and documentation regression coverage.
+- Bumped the plugin version to `1.36.0`.
+
 ## 1.35.0
 
 - Added MiniMax-H3 video generation through APIMart with text-to-video, first-frame, first-last-frame, image-reference, and video-reference modes.
