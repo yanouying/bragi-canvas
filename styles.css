@@ -510,6 +510,17 @@
 	object-fit: cover;
 }
 
+/* Native fullscreen should show the whole frame, especially for portrait video. */
+.canvas-node-content.media-embed.video-embed video:fullscreen,
+.canvas-node-content.media-embed.video-embed video:-webkit-full-screen {
+	width: 100vw;
+	height: 100vh;
+	max-width: 100vw;
+	max-height: 100vh;
+	object-fit: contain;
+	background-color: #000;
+}
+
 /* Audio embed nodes: Obsidian draws a border on WebKit's native player chrome */
 .canvas-node-content.media-embed audio {
 	border: none;
