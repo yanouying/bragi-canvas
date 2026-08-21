@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.36.1
+
+- Fixed portrait videos in native fullscreen playback so they are contained within the viewport instead of being cropped.
+- Kept canvas video thumbnails on the existing cover-fit behavior while applying fullscreen-specific contain-fit styling.
+- Bumped the plugin version to `1.36.1`.
+
 ## 1.36.0
 
 - Upgraded the native xAI Grok Imagine image route to `grok-imagine-image-2.0` while preserving the stable Bragi `grok-imagine` model ID.
