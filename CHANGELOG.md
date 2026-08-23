@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fixed MCP reference-image generation races by waiting for newly imported Canvas edges before reading upstream inputs, including GPT Image 2 edit flows.
+- Added 1080p output for Seedance 2.5 in both the canvas generation bar and MCP model parameters.
+
 ## 1.36.1
 
 - Fixed portrait videos in native fullscreen playback so they are contained within the viewport instead of being cropped.

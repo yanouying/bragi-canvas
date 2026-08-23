@@ -336,7 +336,7 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 				toEnd: z.enum(['none', 'arrow']).optional().default('arrow').describe('Arrow at target end'),
 				label: z.string().optional().describe('Edge label'),
 			},
-			handler: ({ fromId, toId, fromSide, toSide, toEnd, label }) => {
+			handler: async ({ fromId, toId, fromSide, toSide, toEnd, label }) => {
 				const canvas = requireCanvas(getCanvas)
 				findNode(canvas, fromId)
 				findNode(canvas, toId)
@@ -351,8 +351,15 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 					toEnd,
 				}
 				if (label) edge.label = label
-				canvas.importData({ nodes: [], edges: [edge] })
-				void canvas.requestSave()
+				const full = canvas.getData()
+				canvas.importData({
+					...full,
+					edges: [...(full.edges || []), edge],
+				})
+				// MCP clients commonly connect a reference and call generate immediately.
+				// Wait for Canvas to materialize the runtime edge so getEdgesForNode() sees it.
+				await canvas.requestFrame()
+				await canvas.requestSave()
 				return ok({ edgeId })
 			},
 		},
@@ -540,6 +547,10 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 				if (!settings) throw new Error('Settings not available')
 
 				const canvas = requireCanvas(getCanvas)
+				// Flush any MCP-created nodes/edges before generation reads upstream refs.
+				// Without this barrier, a connect_nodes -> generate sequence can race the
+				// Canvas runtime and silently fall back to text-only image generation.
+				await canvas.requestFrame()
 				const node = findNode(canvas, nodeId)
 
 				const model = getModelById(modelId)
@@ -688,7 +699,7 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 					label: z.string().optional(),
 				})),
 			},
-			handler: ({ edges }) => {
+			handler: async ({ edges }) => {
 				const canvas = requireCanvas(getCanvas)
 				const full = canvas.getData()
 				const created: string[] = []
@@ -713,7 +724,8 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 					...full,
 					edges: [...(full.edges || []), ...newEdges],
 				})
-				void canvas.requestSave()
+				await canvas.requestFrame()
+				await canvas.requestSave()
 				return ok({ edgeIds: created })
 			},
 		},

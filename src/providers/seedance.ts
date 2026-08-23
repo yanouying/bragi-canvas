@@ -90,7 +90,7 @@ function assertSeedanceInputs(
 		if (genMode === 'video-edit' && duration !== -1) {
 			throw new Error('Seedance 2.5 video-edit mode requires Auto (-1) duration.')
 		}
-		if (!['480p', '720p'].includes(resolution)) throw new Error(`Seedance 2.5 does not support ${resolution} output.`)
+		if (!['480p', '720p', '1080p'].includes(resolution)) throw new Error(`Seedance 2.5 does not support ${resolution} output.`)
 		if (!['mp4', 'mov'].includes(outputFormat)) throw new Error(`Seedance 2.5 does not support ${outputFormat} output.`)
 	}
 }
