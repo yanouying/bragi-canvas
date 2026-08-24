@@ -2,8 +2,11 @@
 
 ## Unreleased
 
+## 1.36.2
+
 - Fixed MCP reference-image generation races by waiting for newly imported Canvas edges before reading upstream inputs, including GPT Image 2 edit flows.
 - Added 1080p output for Seedance 2.5 in both the canvas generation bar and MCP model parameters.
+- Bumped the plugin version to `1.36.2`.
 
 ## 1.36.1
 
