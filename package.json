@@ -21,6 +21,7 @@
     "test:legnext-image-result": "node scripts/verify-legnext-image-result.mjs",
     "test:mulerouter-carrothub": "node scripts/verify-mulerouter-carrothub-images.mjs",
     "test:reference-image-upload": "node scripts/verify-reference-image-upload.mjs",
+    "test:mcp-reference-generation": "node scripts/verify-mcp-reference-generation.mjs",
     "test:kling-omni": "node scripts/verify-kling-omni.mjs",
     "test:apimart-minimax-h3": "node scripts/verify-apimart-minimax-h3.mjs",
     "test:suchuang-gemini-omni": "node scripts/verify-suchuang-gemini-omni.mjs",

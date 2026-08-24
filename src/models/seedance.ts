@@ -62,6 +62,7 @@ export const seedance25: ModelConfig = {
 			options: [
 				{ label: '480p', value: '480p' },
 				{ label: '720p', value: '720p' },
+				{ label: '1080p', value: '1080p' },
 			],
 			default: '720p',
 		},

@@ -60,6 +60,13 @@ try {
 	assert.equal(multimodal.generate_audio, false)
 	assert.equal(multimodal.output_format, 'mov')
 
+	const fullHd = buildSeedanceRequestBody('Render in full HD', {
+		modelId,
+		genMode: 'text-to-video',
+		resolution: '1080p',
+	})
+	assert.equal(fullHd.resolution, '1080p')
+
 	assert.throws(
 		() => buildSeedanceRequestBody('Too many images', {
 			modelId,
@@ -160,6 +167,7 @@ try {
 	assert.match(modelSource, /id: 'seedance-2\.5'[\s\S]*bytedance: \{ apiModelId: 'doubao-seedance-2-5-260628' \}[\s\S]*apiModelId: 'dreamina-seedance-2-5-260628'/)
 	assert.match(modelSource, /id: 'seedance-2\.5'[\s\S]*svnewapi: \{ apiModelId: 'sv-seedance-2\.5' \}/)
 	assert.match(modelSource, /modes: \['text-to-video', 'first-frame', 'first-last-frame', 'image-ref', 'video-ref', 'video-extend', 'video-edit'\]/)
+	assert.match(modelSource, /id: 'seedance-2\.5'[\s\S]*\{ label: '1080p', value: '1080p' \}/)
 	assert.match(mainSource, /getSeedanceReferenceLimits\(model\.id\)/)
 	assert.match(providerRules, /## Volcengine and BytePlus Seedance 2\.5[\s\S]*doubao-seedance-2-5-260628[\s\S]*dreamina-seedance-2-5-260628/)
 	assert.match(migrationsSource, /CURRENT_SETTINGS_SCHEMA_VERSION = 12/)
