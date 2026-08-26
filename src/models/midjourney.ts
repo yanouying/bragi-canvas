@@ -2,7 +2,7 @@ import type { ModelConfig } from './types'
 
 export const midjourneyV8: ModelConfig = {
 	id: 'midjourney-v8',
-	name: 'Midjourney v8',
+	name: 'Midjourney V8.2',
 	type: 'image',
 	supportedProviders: {
 		legnext: { apiModelId: 'midjourney' },
@@ -28,14 +28,14 @@ export const midjourneyV8: ModelConfig = {
 			default: '1:1',
 		},
 		{
-			id: 'quality',
-			label: 'Quality',
+			id: 'resolution',
+			label: 'Resolution',
 			type: 'select',
 			options: [
-				{ label: 'Standard', value: '1' },
-				{ label: 'High (4x cost)', value: '4' },
+				{ label: 'Standard (1K)', value: 'standard' },
+				{ label: 'HD (2K, 1.5x cost)', value: 'hd' },
 			],
-			default: '1',
+			default: 'standard',
 		},
 		{
 			id: 'stylize',
@@ -45,6 +45,43 @@ export const midjourneyV8: ModelConfig = {
 			max: 1000,
 			step: 50,
 			default: 100,
+		},
+		{
+			id: 'chaos',
+			label: 'Chaos',
+			type: 'range',
+			min: 0,
+			max: 100,
+			step: 1,
+			default: 0,
+		},
+		{
+			id: 'style',
+			label: 'Style',
+			type: 'select',
+			options: [
+				{ label: 'Default', value: 'default' },
+				{ label: 'Raw', value: 'raw' },
+			],
+			default: 'default',
+		},
+		{
+			id: 'stop',
+			label: 'Stop',
+			type: 'range',
+			min: 10,
+			max: 100,
+			step: 10,
+			default: 100,
+		},
+		{
+			id: 'weird',
+			label: 'Weird',
+			type: 'range',
+			min: 0,
+			max: 3000,
+			step: 50,
+			default: 0,
 		},
 	],
 }

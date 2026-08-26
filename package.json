@@ -18,6 +18,7 @@
     "test:bfl-denoise": "node scripts/verify-bfl-denoise.mjs",
     "test:local-denoise": "node scripts/verify-local-denoise.mjs",
     "test:fal-flux-klein": "node scripts/verify-fal-flux-klein.mjs",
+    "test:legnext-v8-2": "node scripts/verify-legnext-v8-2.mjs",
     "test:legnext-image-result": "node scripts/verify-legnext-image-result.mjs",
     "test:mulerouter-carrothub": "node scripts/verify-mulerouter-carrothub-images.mjs",
     "test:reference-image-upload": "node scripts/verify-reference-image-upload.mjs",

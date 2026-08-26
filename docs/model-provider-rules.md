@@ -34,6 +34,13 @@ Example: Wan 2.7 (`src/models/wan.ts`) is one model with DashScope (aggregated, 
 
 When you add a model/provider, run the check; if it fails, fix the catalog rather than the script.
 
+## Legnext Midjourney V8.2
+
+- Bragi keeps the stable model ID `midjourney-v8` while displaying Midjourney V8.2 and injecting `--v 8.2` when the prompt does not already contain `--v` or `--version`.
+- Legnext accepts model and render controls inside the `/v1/diffusion` `text` field. V8.2 exposes aspect ratio, Standard/2K resolution (`--hd`), stylize, chaos, raw style, stop, and weird controls. It does not expose the rejected `--q` / `--quality` flag.
+- Explicit user-authored Midjourney flags win. Detect long and short aliases as complete tokens so `--s` does not collide with `--seed` and `--c` does not collide with `--cref`.
+- Completed image tasks prefer the first non-empty URL in `output.image_urls`; use `output.image_url` only as a backward-compatible grid fallback.
+
 ## APIMart Omni-Flash-Ext
 
 - Endpoint: `POST https://api.apimart.ai/v1/videos/generations`.
