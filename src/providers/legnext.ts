@@ -2,13 +2,82 @@
 import type { ImageProvider, GenerateImageResult } from './types'
 import type { App } from 'obsidian'
 import { requestUrl } from 'obsidian'
-import { optionalStringParam, stringParam } from './params'
+import { stringParam } from './params'
 
 const BASE_URL = 'https://api.legnext.ai/api'
 
 interface LegnextImageOutput {
 	image_url?: unknown
 	image_urls?: unknown
+}
+
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function hasMidjourneyFlag(prompt: string, aliases: string[]): boolean {
+	const names = aliases.map(escapeRegExp).join('|')
+	return new RegExp(`(?:^|\\s)--(?:${names})(?=\\s|=|$)`, 'i').test(prompt)
+}
+
+function appendFlag(prompt: string, aliases: string[], value: string): string {
+	return hasMidjourneyFlag(prompt, aliases) ? prompt : `${prompt} ${value}`
+}
+
+/** Build the provider prompt while preserving explicit user-authored Midjourney flags. */
+export function buildLegnextPrompt(prompt: string, params: Record<string, unknown> = {}): string {
+	const modelId = stringParam(params.modelId, 'midjourney-v8')
+	const isNiji = modelId === 'midjourney-niji-7'
+	let mjPrompt = prompt
+
+	if (isNiji) {
+		mjPrompt = appendFlag(mjPrompt, ['niji'], '--niji 7')
+	} else {
+		mjPrompt = appendFlag(mjPrompt, ['v', 'version'], '--v 8.2')
+	}
+
+	const ar = stringParam(params.ar, '1:1')
+	mjPrompt = appendFlag(mjPrompt, ['ar', 'aspect'], `--ar ${ar}`)
+
+	const stylize = stringParam(params.stylize, '100')
+	if (stylize !== '100') {
+		mjPrompt = appendFlag(mjPrompt, ['stylize', 's'], `--stylize ${stylize}`)
+	}
+
+	if (isNiji) return mjPrompt
+
+	const resolution = stringParam(params.resolution, 'standard').toLowerCase()
+	if (resolution !== 'standard' && resolution !== 'hd') {
+		throw new Error('Legnext: Resolution must be standard or hd')
+	}
+	if (resolution === 'hd') {
+		mjPrompt = appendFlag(mjPrompt, ['hd'], '--hd')
+	}
+
+	const chaos = stringParam(params.chaos, '0')
+	if (chaos !== '0') {
+		mjPrompt = appendFlag(mjPrompt, ['chaos', 'c'], `--chaos ${chaos}`)
+	}
+
+	const style = stringParam(params.style, 'default').toLowerCase()
+	if (style !== 'default' && style !== 'raw') {
+		throw new Error('Legnext: Style must be default or raw')
+	}
+	if (style === 'raw' && !hasMidjourneyFlag(mjPrompt, ['style', 'raw'])) {
+		mjPrompt += ' --style raw'
+	}
+
+	const stop = stringParam(params.stop, '100')
+	if (stop !== '100') {
+		mjPrompt = appendFlag(mjPrompt, ['stop'], `--stop ${stop}`)
+	}
+
+	const weird = stringParam(params.weird, '0')
+	if (weird !== '0') {
+		mjPrompt = appendFlag(mjPrompt, ['weird', 'w'], `--weird ${weird}`)
+	}
+
+	return mjPrompt
 }
 
 export function selectLegnextImageUrl(output: LegnextImageOutput | null | undefined): string | undefined {
@@ -26,7 +95,7 @@ export function selectLegnextImageUrl(output: LegnextImageOutput | null | undefi
 /**
  * Legnext AI provider for Midjourney image generation.
  * Async: POST /v1/diffusion → poll GET /v1/job/{id} → download image.
- * Model version and params are embedded in the prompt text (--v 8, --ar 16:9, etc.)
+ * Model version and params are embedded in the prompt text (--v 8.2, --ar 16:9, etc.)
  */
 export class LegnextProvider implements ImageProvider {
 	name = 'Legnext'
@@ -41,35 +110,7 @@ export class LegnextProvider implements ImageProvider {
 	}
 
 	async generateImage(prompt: string, params?: Record<string, unknown>): Promise<GenerateImageResult> {
-		const modelId = params?.modelId || 'midjourney-v8'
-
-		// Build MJ prompt with params appended
-		let mjPrompt = prompt
-
-		// Append version flag
-		if (modelId === 'midjourney-niji-7') {
-			if (!mjPrompt.includes('--niji')) mjPrompt += ' --niji 7'
-		} else {
-			if (!mjPrompt.includes('--v ')) mjPrompt += ' --v 8'
-		}
-
-		// Append aspect ratio
-		const ar = optionalStringParam(params?.ar)
-		if (ar && !mjPrompt.includes('--ar')) {
-			mjPrompt += ` --ar ${ar}`
-		}
-
-		// Append quality
-		const quality = optionalStringParam(params?.quality)
-		if (quality && quality !== '1' && !mjPrompt.includes('--q ')) {
-			mjPrompt += ` --q ${quality}`
-		}
-
-		// Append stylize
-		const stylize = params?.stylize === undefined ? undefined : stringParam(params.stylize, '100')
-		if (stylize !== undefined && stylize !== '100' && !mjPrompt.includes('--stylize')) {
-			mjPrompt += ` --stylize ${stylize}`
-		}
+		const mjPrompt = buildLegnextPrompt(prompt, params)
 
 		// Submit task
 		const submitResponse = await requestUrl({
