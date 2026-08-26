@@ -2,8 +2,11 @@
 
 ## Unreleased
 
+## 1.37.0
+
 - Upgraded the stable `midjourney-v8` model to Midjourney V8.2 through Legnext, replacing the unsupported quality control with Standard/2K resolution and adding V8.2-compatible stylize, chaos, raw style, stop, and weird controls.
 - Added token-aware Midjourney prompt flag handling and V8.2 catalog/request regression coverage while preserving explicit prompt flags and the existing individual-image result selection.
+- Bumped the plugin version to `1.37.0`.
 
 ## 1.36.2
 
