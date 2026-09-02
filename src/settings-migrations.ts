@@ -10,7 +10,7 @@ import { DEFAULT_SETTINGS, type BragiSettings, type GeneratedAssetRecord, type L
 
 type UnknownRecord = Record<string, unknown>
 
-export const CURRENT_SETTINGS_SCHEMA_VERSION = 8
+export const CURRENT_SETTINGS_SCHEMA_VERSION = 12
 const PROVIDER_MODEL_PREFS_SCHEMA_VERSION = 2
 
 export interface SettingsMigrationResult {
@@ -306,6 +306,7 @@ function readSettings(raw: UnknownRecord, defaults: BragiSettings): { settings: 
 	readOptionalBoolean(raw, 'mcpEnabled', target, errors)
 	readOptionalPort(raw, 'mcpPort', target, errors)
 	readOptionalString(raw, 'mcpToken', target, errors)
+	readOptionalString(raw, 'denoiseServiceUrl', target, errors)
 	readOptionalStringArray(raw, 'knownCanvases', target, errors)
 	settings.generatedAssets = readGeneratedAssets(raw, errors)
 	settings.updatePrompt = readUpdatePrompt(raw, errors)
@@ -516,6 +517,15 @@ function migrateDashScopeWan27(settings: BragiSettings, previousVersion: number)
 	}
 }
 
+function migrateSeedance25SvRouter(settings: BragiSettings, previousVersion: number): void {
+	if (previousVersion >= 12) return
+	if (!settings.providers.svnewapi?.trim()) return
+	const modelId = 'seedance-2.5'
+	const pref = settings.modelPrefs[modelId]
+	if (pref?.enabled !== true) return
+	connectProviderToModel(settings, 'svnewapi', modelId)
+}
+
 const RECOGNIZABLE_KEYS = [
 	'settingsSchemaVersion',
 	'outputDir',
@@ -527,6 +537,7 @@ const RECOGNIZABLE_KEYS = [
 	'mcpEnabled',
 	'mcpPort',
 	'mcpToken',
+	'denoiseServiceUrl',
 	'knownCanvases',
 	'generatedAssets',
 	'updatePrompt',
@@ -566,6 +577,7 @@ export function migrateSettings(
 	migrateProviderPrefs19(settings)
 	migrateProviderModelPrefs(settings, previousVersion)
 	migrateDashScopeWan27(settings, previousVersion)
+	migrateSeedance25SvRouter(settings, previousVersion)
 	settings.settingsSchemaVersion = CURRENT_SETTINGS_SCHEMA_VERSION
 
 	const valid = options.strict ? errors.length === 0 : true

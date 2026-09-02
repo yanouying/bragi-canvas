@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Obsidian Canvas internals and provider payloads are runtime-shaped data that this plugin narrows at use sites. */
-import { Plugin, Notice, requestUrl, Menu, Modal, Setting } from 'obsidian'
+import { Plugin, Notice, requestUrl, Menu, Modal, Setting, normalizePath } from 'obsidian'
 import { BragiSettings, DEFAULT_SETTINGS, BragiSettingTab, type GeneratedAssetRecord } from './settings'
 import { migrateSettings } from './settings-migrations'
 import { uploadRef } from './providers/upload'
 import { prepareReferenceUpload } from './providers/image-upload-prep'
 import { getProvider } from './providers/registry'
-import { getRefDelivery } from './provider-model-prefs'
+import { getConnectedConfiguredProviderIds, getRefDelivery, resolveApiModelId } from './provider-model-prefs'
 import { TaskQueue, type TaskSnapshot } from './task-queue'
 import { getCanvasFromNode, createPlaceholderNode, replacePlaceholderWithFile, markNodeFailed, duplicateWithConnections, computeOutputSize, readAspectRatio, sweepInterruptedPlaceholders, rehydrateFailedPlaceholders, stopGeneratingTicker } from './canvas-ops'
 import { patchCanvasMenu, unpatchCanvasMenu, removeToolbarButtons, replaceCanvasControlIcons, replaceCanvasCardMenuIcons } from './toolbar'
@@ -22,7 +22,7 @@ import { startEdgeHighlight, stopEdgeHighlight } from './edge-highlight'
 import { startMediaNodeHover, stopMediaNodeHover } from './media-node-hover'
 import { exportCanvas, importCanvas } from './import-export'
 import type { PanelResult } from './panel'
-import type { AudioProvider, VideoProvider } from './providers/types'
+import type { AudioProvider, VideoProvider, VoiceCloneResult } from './providers/types'
 import { BragiMcpServer } from './mcp-server'
 import { checkMigration } from './migrate-assets'
 import { startAttachmentRedirect } from './attachment-redirect'
@@ -37,19 +37,19 @@ import { isSupportedLanguage, LanguageGateModal } from './ui/language-gate'
 import { installAlwaysNewTab } from './always-new-tab'
 import type { Canvas, CanvasNode } from './types/canvas-internal'
 import type { VoiceSourceMode, RefModality, ModelConfig } from './models/types'
+import { getActiveProvider, getModelById } from './models'
 import { validateTextInputs } from './models/text-input-capabilities'
 import { prepareTextInputs } from './text-input-prep'
 import { checkForPluginUpdate, markUpdatePrompted, shouldShowAutomaticUpdatePrompt, type AvailablePluginUpdate } from './update-check'
 import { UpdateReminderModal } from './ui/update-modal'
 import { dashScopeRegion } from './providers/dashscope'
+import { BFL_DENOISE_PROMPT } from './providers/bfl'
+import { getAssetIdsForFiles, getNodeAssetId, getNodeAssetIdMap, getSeedanceAssetMediaKind, SEEDANCE_ASSET_PROVIDER_LABELS, setNodeAssetId, type SeedanceAssetProviderId } from './asset-ids'
+import { requestNlm35Denoise } from './denoise'
+import { DenoiseChoiceModal, type DenoiseMethod } from './ui/denoise-choice-modal'
+import { getSeedanceReferenceLimits } from './seedance-capabilities'
 
-type SeedanceAssetProviderId = 'tokenrouter' | 'byteplus' | 'bytedance'
-
-const SEEDANCE_ASSET_PROVIDER_LABELS: Record<SeedanceAssetProviderId, string> = {
-	tokenrouter: 'TokenRouter',
-	byteplus: 'BytePlus',
-	bytedance: 'Volcengine',
-}
+const ELEVENLABS_VOICE_CHANGER_MODEL_ID = 'eleven_multilingual_sts_v2'
 
 export default class BragiCanvas extends Plugin {
 	settings: BragiSettings = DEFAULT_SETTINGS
@@ -94,16 +94,16 @@ export default class BragiCanvas extends Plugin {
 		// from getting swapped out when the user clicks another file.
 		this.register(installAlwaysNewTab(this.app))
 
-		// Right-click menu: Set Asset ID on image nodes
+		// Right-click menu: Set Asset ID on image and audio nodes
 		this.registerEvent(
 			// @ts-ignore — internal API
 			this.app.workspace.on('canvas:node-menu', (menu: Menu, node: CanvasNode) => {
 				const nodeData = node.getData()
 				if (nodeData.type !== 'file') return
 				const filePath = (nodeData as { file?: string }).file || ''
-				if (!/\.(png|jpg|jpeg|webp|bmp|tiff?|gif|heic|heif)$/i.test(filePath)) return
+				if (!getSeedanceAssetMediaKind(filePath)) return
 
-				const assetIds = this.getNodeAssetIdMap(node)
+				const assetIds = getNodeAssetIdMap(node)
 				const scopedCount = Object.keys(assetIds).length
 				menu.addItem((item) => {
 					item.setTitle(scopedCount ? `Seedance asset IDs: ${scopedCount}` : 'Set Seedance asset ID')
@@ -381,12 +381,14 @@ export default class BragiCanvas extends Plugin {
 
 		rehydrateFailedPlaceholders(canvas)
 
-		patchCanvasMenu(
-			canvas,
-			(node) => this.openPanel('image', node),
+			patchCanvasMenu(
+				canvas,
+				(node) => this.openPanel('image', node),
 				(node) => this.openPanel('video', node),
 				(node) => this.openPanel('text', node),
 				(node) => this.openPanel('audio', node),
+				(node) => { void this.handleVoiceChanger(node) },
+				(node) => this.canVoiceChanger(node),
 				(node) => { void this.handleSTT(node) },
 				(node) => { void this.handleAudioIsolation(node) },
 			(node) => {
@@ -405,6 +407,7 @@ export default class BragiCanvas extends Plugin {
 			}),
 			(node, activeCanvas) => openImageAnnotationTool(this, activeCanvas, node, 'box'),
 			(node, activeCanvas) => openVideoEditTool(this, activeCanvas, node),
+			(node, activeCanvas) => this.openDenoiseImage(node, activeCanvas),
 		)
 
 		patchPlaceholderContextMenu(canvas)
@@ -473,6 +476,151 @@ export default class BragiCanvas extends Plugin {
 		await Promise.allSettled(promises)
 	}
 
+	openDenoiseImage(node: CanvasNode, canvas: Canvas): void {
+		const fluxContext = this.getFluxDenoiseContext()
+		const fluxProviderName = fluxContext
+			? getProvider(fluxContext.activeProvider)?.name || fluxContext.activeProvider
+			: undefined
+		new DenoiseChoiceModal(this.app, {
+			fluxAvailable: Boolean(fluxContext),
+			fluxProviderName,
+			onChoose: method => { void this.handleImageDenoise(node, canvas, method) },
+		}).open()
+	}
+
+	private getFluxDenoiseContext(): { model: ModelConfig; activeProvider: string } | null {
+		const model = getModelById('flux-2-klein-9b')
+		if (!model) return null
+		const pref = this.settings.modelPrefs[model.id]
+		if (!pref?.enabled) return null
+		const connectedProviders = getConnectedConfiguredProviderIds(this.settings, model)
+		const activeProvider = getActiveProvider(model, pref.selectedProvider, connectedProviders)
+		return activeProvider ? { model, activeProvider } : null
+	}
+
+	async handleImageDenoise(node: CanvasNode, canvas: Canvas, method: DenoiseMethod = 'nlm35'): Promise<void> {
+		if (method === 'nlm35') {
+			await this.handleNlm35ImageDenoise(node, canvas)
+			return
+		}
+		await this.handleFluxImageDenoise(node, canvas)
+	}
+
+	private async handleNlm35ImageDenoise(node: CanvasNode, canvas: Canvas): Promise<void> {
+		const nodeData = node.getData() as { file?: string; width?: number; height?: number }
+		const filePath = nodeData.file || ''
+		if (!filePath) {
+			new Notice('No image file found')
+			return
+		}
+
+		const placeholder = createPlaceholderNode(canvas, 'NLM 35', node, {
+			w: Math.max(120, Math.round(nodeData.width || node.width || 400)),
+			h: Math.max(120, Math.round(nodeData.height || node.height || 300)),
+		})
+		this.syncGenerating.add(placeholder.id)
+
+		try {
+			new Notice('Running local denoise…')
+			const dataUri = await this.readImageDataUri(filePath)
+			const result = await requestNlm35Denoise(dataUri, this.settings.denoiseServiceUrl)
+			const outputPath = await this.writeNlm35Result(filePath, result.bytes)
+
+			this.rememberGeneratedAsset(outputPath)
+			replacePlaceholderWithFile(canvas, placeholder, outputPath, node)
+			new Notice('Denoised image ready')
+		} catch (err: unknown) {
+			console.error('Bragi Canvas NLM 35 denoise error:', err)
+			const message = err instanceof Error ? err.message : 'NLM 35 denoise failed'
+			markNodeFailed(placeholder, message)
+			new Notice(`NLM 35 failed: ${message}`)
+		} finally {
+			this.syncGenerating.delete(placeholder.id)
+		}
+	}
+
+	private async handleFluxImageDenoise(node: CanvasNode, canvas: Canvas): Promise<void> {
+		const context = this.getFluxDenoiseContext()
+		if (!context) {
+			new Notice('Connect BFL, RunPod, or fal.ai to FLUX.2 Klein 9B in settings to use AI refine')
+			return
+		}
+		const { model, activeProvider } = context
+
+		const nodeData = node.getData() as { file?: string; width?: number; height?: number }
+		const filePath = nodeData.file || ''
+		if (!filePath) {
+			new Notice('No image file found')
+			return
+		}
+
+		const placeholder = createPlaceholderNode(canvas, 'Denoising image…', node, {
+			w: Math.max(120, Math.round(nodeData.width || node.width || 400)),
+			h: Math.max(120, Math.round(nodeData.height || node.height || 300)),
+		})
+		this.syncGenerating.add(placeholder.id)
+		const colorMatchReferencePath = getOrderedImages(canvas, node)[0] || ''
+
+		try {
+			const outputDir = this.getOutputDir()
+			const spec = getProvider(activeProvider)
+			const provider = spec?.makeImage?.({ settings: this.settings, app: this.app, outputDir })
+			if (!provider) throw new Error(`${spec?.name || activeProvider} is not configured for image generation`)
+			const providerName = spec?.name || activeProvider
+			new Notice(colorMatchReferencePath ? `Denoising image with ${providerName} and upstream color match…` : `Denoising image with ${providerName}…`)
+
+			const dataUri = await this.readImageDataUri(filePath)
+			const colorMatchDataUri = colorMatchReferencePath
+				? await this.readImageDataUri(colorMatchReferencePath)
+				: null
+			const denoiseParams: Record<string, unknown> = {
+				modelId: resolveApiModelId(this.settings, activeProvider, model),
+				refImages: [dataUri],
+				targetLongEdge: 2048,
+				enableColorMatch: Boolean(colorMatchDataUri),
+				colorMatchRefImage: colorMatchDataUri || undefined,
+			}
+			if (activeProvider === 'runpod') denoiseParams.steps = 12
+			const genResult = await provider.generateImage(BFL_DENOISE_PROMPT, denoiseParams)
+
+			this.rememberGeneratedAsset(genResult.filePath)
+			replacePlaceholderWithFile(canvas, placeholder, genResult.filePath, node)
+			new Notice(colorMatchDataUri ? 'Denoised image ready with upstream color match' : 'Denoised image ready')
+		} catch (err: unknown) {
+			console.error('Bragi Canvas denoise error:', err)
+			markNodeFailed(placeholder, err instanceof Error ? err.message : 'Denoise failed')
+			new Notice(`Denoise failed: ${err instanceof Error ? err.message : String(err)}`)
+		} finally {
+			this.syncGenerating.delete(placeholder.id)
+		}
+	}
+
+	private async writeNlm35Result(sourcePath: string, bytes: ArrayBuffer): Promise<string> {
+		const outputDir = normalizePath(this.getOutputDir())
+		const adapter = this.app.vault.adapter
+		let current = ''
+		for (const part of outputDir.split('/').filter(Boolean)) {
+			current = current ? `${current}/${part}` : part
+			if (!await adapter.exists(current)) await adapter.mkdir(current)
+		}
+
+		const sourceName = sourcePath.split('/').pop()?.replace(/\.[^.]+$/, '') || 'image'
+		const safeName = sourceName.replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'image'
+		const outputPath = normalizePath(`${outputDir}/${safeName}_nlm35_${Date.now()}.png`)
+		await adapter.writeBinary(outputPath, bytes)
+		return outputPath
+	}
+
+	private async readImageDataUri(filePath: string): Promise<string> {
+		const binary = await this.app.vault.adapter.readBinary(filePath)
+		return `data:${imageMimeType(filePath)};base64,${arrayBufferToBase64(binary)}`
+	}
+
+	private canVoiceChanger(node: CanvasNode): boolean {
+		if (!this.settings.providers.elevenlabs) return false
+		return getUpstreamInputs(getCanvasFromNode(node), node).audios.length === 1
+	}
+
 	// ── Generation logic ────────────────────────────────────────
 
 	getOutputDir(): string {
@@ -536,7 +684,7 @@ export default class BragiCanvas extends Plugin {
 				new Notice(`Generation failed: ${err?.message || 'Unknown error'}`)
 			})
 			.finally(() => {
-				// Video placeholders are tracked by TaskQueue, not syncGenerating, so
+				// Async placeholders are tracked by TaskQueue, not syncGenerating, so
 				// deleting here is safe either way.
 				this.syncGenerating.delete(placeholder.id)
 			})
@@ -562,8 +710,10 @@ export default class BragiCanvas extends Plugin {
 			? imageMimeType(vaultPath)
 			: modality === 'video'
 				? videoMimeType(vaultPath)
-				: audioMimeType(vaultPath)
-		const ext = getFileExtension(vaultPath, modality === 'image' ? 'png' : modality === 'video' ? 'mp4' : 'mp3')
+				: modality === 'audio'
+					? audioMimeType(vaultPath)
+					: 'application/pdf'
+		const ext = getFileExtension(vaultPath, modality === 'image' ? 'png' : modality === 'video' ? 'mp4' : modality === 'audio' ? 'mp3' : 'pdf')
 
 		// native_asset reaches here only when no provider-native asset flow ran
 		// (e.g. credentials missing) — fall back to relay so generation still works.
@@ -619,10 +769,23 @@ export default class BragiCanvas extends Plugin {
 			// Seedance can consume provider-specific asset:// IDs.
 			const isSeedanceModel = model.id.startsWith('seedance')
 			const isMuleRouterWan = activeProvider === 'mulerouter' && model.id === 'wan-2.7'
-			const isDashScopeWan = activeProvider === 'dashscope' && model.id === 'wan-2.7'
+			const isDashScopeWan3 = activeProvider === 'dashscope' && model.id === 'wan-3.0'
+			const isDashScopeWan = activeProvider === 'dashscope' && (model.id === 'wan-2.7' || isDashScopeWan3)
 			const supportsApimartVideoRef = activeProvider === 'apimart' && model.id === 'omni-flash-ext'
+			const supportsApimartMinimaxH3Refs = activeProvider === 'apimart' && model.id === 'minimax-h3'
+			const supportsKlingOmniVideoRef = model.id === 'kling-3.0-omni' && (activeProvider === 'kling' || activeProvider === 'apimart')
 			const isNativeSeedance = (activeProvider === 'bytedance' || activeProvider === 'byteplus') && isSeedanceModel
 			const hasSeedanceMediaRefs = uniqueImages.length > 0 || uniqueAudios.length > 0 || uniqueVideos.length > 0
+			const seedanceReferenceLimits = isSeedanceModel ? getSeedanceReferenceLimits(model.id) : null
+			if (seedanceReferenceLimits && uniqueImages.length > seedanceReferenceLimits.images) {
+				throw new Error(`${model.name} supports up to ${seedanceReferenceLimits.images} reference images.`)
+			}
+			if (seedanceReferenceLimits && uniqueAudios.length > seedanceReferenceLimits.audios) {
+				throw new Error(`${model.name} supports up to ${seedanceReferenceLimits.audios} reference audio files.`)
+			}
+			if (seedanceReferenceLimits && uniqueVideos.length > seedanceReferenceLimits.videos) {
+				throw new Error(`${model.name} supports up to ${seedanceReferenceLimits.videos} reference videos.`)
+			}
 			// BytePlus asset library: run when Seedance has reference media and AK/SK configured.
 			const bytePlusCreds = (activeProvider === 'byteplus' && isNativeSeedance && hasSeedanceMediaRefs)
 				? getBytePlusAssetCreds(this)
@@ -638,6 +801,9 @@ export default class BragiCanvas extends Plugin {
 				// image/audio/video, which the gateway turns into Ark content[] roles.
 				|| (activeProvider === 'svnewapi' && isSeedanceModel)
 			const assetIdMap = supportsSeedanceAssetRefs ? getAssetIds(canvas, node, activeProvider) : {}
+			const audioAssetIdMap = supportsSeedanceAssetRefs
+				? getAssetIdsForFiles(canvas, uniqueAudios, activeProvider)
+				: {}
 			const token360AssetCreds = (activeProvider === 'token360' && isSeedanceModel && uniqueImages.length > 0)
 				? getToken360AssetCreds(this)
 				: null
@@ -674,10 +840,7 @@ export default class BragiCanvas extends Plugin {
 			}
 
 			// Upload reference audios for providers/models that need public media URLs.
-			if ((supportsSeedanceUrlRefs || isMuleRouterWan || isDashScopeWan) && uniqueAudios.length > 0) {
-				if (supportsSeedanceUrlRefs && uniqueAudios.length > 3) {
-					throw new Error('Seedance supports up to 3 reference audio files.')
-				}
+			if ((supportsSeedanceUrlRefs || isMuleRouterWan || isDashScopeWan || supportsApimartMinimaxH3Refs) && uniqueAudios.length > 0) {
 				const audioRefs = isMuleRouterWan ? uniqueAudios.slice(0, 1) : uniqueAudios
 				for (const audioPath of audioRefs) {
 					if (bytePlusCreds) {
@@ -685,6 +848,8 @@ export default class BragiCanvas extends Plugin {
 						refAudios.push(await ensureBytePlusAsset(this, canvas, audioPath, bytePlusCreds))
 					} else if (tokenRouterModelArkCreds) {
 						refAudios.push(await ensureTokenRouterModelArkAsset(this, canvas, audioPath, tokenRouterModelArkCreds))
+					} else if (audioAssetIdMap[audioPath]) {
+						refAudios.push(`asset://${audioAssetIdMap[audioPath]}`)
 					} else {
 						refAudios.push(await this.prepareReferenceMedia(activeProvider, model, 'audio', audioPath))
 					}
@@ -692,19 +857,17 @@ export default class BragiCanvas extends Plugin {
 			}
 
 			// Prepare reference videos for models/providers that can consume upstream video inputs.
-			// BytePlus Seedance videos must go through asset:// so face-containing clips are reviewed first.
+			// BytePlus uses asset:// when native asset credentials are configured; otherwise
+			// the declarative delivery path falls back to a temporary HTTPS relay URL.
 			if (model.type === 'video' && uniqueVideos.length > 0) {
-				if (mode === 'video-ref' && !supportsSeedanceUrlRefs && !supportsApimartVideoRef && !isDashScopeWan) {
-					throw new Error('Reference video is only available with Volcengine, BytePlus, TokenRouter, or Token360 Seedance, APIMart Omni-Flash-Ext, or DashScope Wan 2.7.')
-				}
-				if (supportsSeedanceUrlRefs && uniqueVideos.length > 3) {
-					throw new Error('Seedance supports up to 3 reference videos.')
+				if (mode === 'video-ref' && !supportsSeedanceUrlRefs && !supportsApimartVideoRef && !supportsApimartMinimaxH3Refs && !supportsKlingOmniVideoRef && !isDashScopeWan) {
+					throw new Error('Reference video is not available for the active model and provider.')
 				}
 				if (supportsApimartVideoRef && uniqueVideos.length > 1) {
 					throw new Error('APIMart Omni-Flash-Ext supports at most 1 reference video.')
 				}
-				if (isNativeSeedance && activeProvider === 'byteplus' && !bytePlusCreds) {
-					throw new Error('Add BytePlus access key and secret key in settings to use reference videos.')
+				if (supportsKlingOmniVideoRef && uniqueVideos.length > 1) {
+					throw new Error('Kling 3.0 Omni supports at most 1 reference video.')
 				}
 				const shouldUseVideos = supportsSeedanceUrlRefs || isDashScopeWan || mode === 'video-extend' || mode === 'video-edit' || mode === 'video-ref' || mode === 'motion-control'
 				if (shouldUseVideos) {
@@ -728,6 +891,11 @@ export default class BragiCanvas extends Plugin {
 						}
 					}
 				}
+			}
+
+			if (isDashScopeWan3 && uniquePdfs.length > 0) {
+				if (uniquePdfs.length > 1) throw new Error('Wan 3.0 supports at most 1 reference file.')
+				refPdfs.push(await this.prepareReferenceMedia(activeProvider, model, 'pdf', uniquePdfs[0]))
 			}
 			}
 
@@ -755,7 +923,7 @@ export default class BragiCanvas extends Plugin {
 					markNodeFailed(placeholder, `${activeProvider} doesn't support video generation`)
 					return
 				}
-				const videoResult = await provider.generateVideo(finalPrompt, { ...params, modelId: apiModelId, genMode: mode, refImages, refAudios, refVideos })
+				const videoResult = await provider.generateVideo(finalPrompt, { ...params, modelId: apiModelId, genMode: mode, refImages, refAudios, refVideos, refPdfs })
 
 				if (videoResult.done && videoResult.filePath) {
 					// Rare: synchronous completion
@@ -776,6 +944,7 @@ export default class BragiCanvas extends Plugin {
 							placeholderNodeId: placeholder.id,
 							outputDir,
 							startedAt: Date.now(),
+							outputType: 'video',
 						},
 						provider,
 						canvas,
@@ -859,23 +1028,124 @@ export default class BragiCanvas extends Plugin {
 					mode: mode as 'tts' | 'music' | 'sound-effect',
 					modelId: audioModelId,
 					upstreamPrompts,
+					nodePrompt: result.prompt,
 					...audioParams,
 				})
-				this.rememberGeneratedAsset(audioResult.filePath)
-				replacePlaceholderWithFile(canvas, placeholder, audioResult.filePath, node)
-				if (customVoiceRecord) {
-					const outputNode = findFileNodeByPath(canvas, audioResult.filePath)
-					if (outputNode) {
-						upsertCustomVoiceRecord(outputNode, await customVoiceRecordForOutput(this.app, audioResult.filePath, customVoiceRecord))
-						await canvas.requestSave?.()
+				if (audioResult.filePath) {
+					this.rememberGeneratedAsset(audioResult.filePath)
+					replacePlaceholderWithFile(canvas, placeholder, audioResult.filePath, node)
+					if (customVoiceRecord) {
+						const outputNode = findFileNodeByPath(canvas, audioResult.filePath)
+						if (outputNode) {
+							upsertCustomVoiceRecord(outputNode, await customVoiceRecordForOutput(this.app, audioResult.filePath, customVoiceRecord))
+							await canvas.requestSave?.()
+						}
 					}
+					new Notice('Audio ready')
+				} else if (audioResult.taskId && provider.checkStatus) {
+					const canvasPath = (this.app.workspace.getLeaf(false)?.view as unknown)?.file?.path as string | undefined
+					this.taskQueue.addTask({
+						snapshot: {
+							taskId: audioResult.taskId,
+							providerName: activeProvider,
+							apiModelId: audioModelId,
+							modelName: model.name,
+							canvasPath: canvasPath || '',
+							sourceNodeId: node.id,
+							placeholderNodeId: placeholder.id,
+							outputDir,
+							startedAt: Date.now(),
+							outputType: 'audio',
+						},
+						provider,
+						canvas,
+						placeholder,
+						sourceNode: node,
+					})
+					new Notice(`Audio queued — you'll get a notice when it's ready`)
+				} else {
+					throw new Error(`${model.name} returned neither an audio file nor a task ID`)
 				}
-				new Notice('Audio ready')
 			}
 		} catch (err: unknown) {
 			console.error('Bragi Canvas generation error:', err)
 			markNodeFailed(placeholder, err.message || 'Unknown error')
 			new Notice(`Generation failed: ${err.message}`)
+		}
+	}
+
+	/**
+	 * Voice Changer: selected audio supplies content/timing; exactly one incoming
+	 * audio supplies the target voice reference.
+	 */
+	async handleVoiceChanger(node: CanvasNode): Promise<void> {
+		const canvas = getCanvasFromNode(node)
+		const incomingAudios = getUpstreamInputs(canvas, node).audios
+		if (!this.settings.providers.elevenlabs || incomingAudios.length !== 1) {
+			new Notice('Set up voice changer and connect one incoming audio')
+			return
+		}
+
+		const nodeData = node.getData() as { file?: string }
+		const sourcePath = nodeData.file || ''
+		if (!sourcePath) {
+			new Notice('Voice changer could not find the source audio file')
+			return
+		}
+
+		const spec = getProvider('elevenlabs')
+		const provider = spec?.makeAudio?.({
+			settings: this.settings,
+			app: this.app,
+			outputDir: this.getOutputDir(),
+		})
+		if (!provider || !providerSupportsVoiceChange(provider)) {
+			new Notice('Voice changer is not available')
+			return
+		}
+
+		const placeholder = createPlaceholderNode(canvas, 'Voice changer', node, computeOutputSize('audio'))
+		this.syncGenerating.add(placeholder.id)
+
+		try {
+			const voiceParams: Record<string, unknown> = {}
+			const voiceRecord = await applyUpstreamVoiceReference(
+				this.app,
+				canvas,
+				provider,
+				'elevenlabs',
+				this.settings,
+				ELEVENLABS_VOICE_CHANGER_MODEL_ID,
+				incomingAudios,
+				0,
+				voiceParams,
+			)
+			const voiceId = typeof voiceParams.voice === 'string' ? voiceParams.voice : voiceRecord.voiceId
+			const sourceBytes = await this.app.vault.adapter.readBinary(sourcePath)
+			const extension = getFileExtension(sourcePath, 'mp3')
+			const result = await provider.changeVoice({
+				voiceId,
+				modelId: ELEVENLABS_VOICE_CHANGER_MODEL_ID,
+				audioBytes: sourceBytes,
+				filename: `source.${extension}`,
+				mimeType: audioMimeType(sourcePath),
+			})
+
+			this.rememberGeneratedAsset(result.filePath)
+			replacePlaceholderWithFile(canvas, placeholder, result.filePath, node)
+			const outputNode = findFileNodeByPath(canvas, result.filePath)
+			if (outputNode) {
+				upsertCustomVoiceRecord(outputNode, await customVoiceRecordForOutput(this.app, result.filePath, voiceRecord))
+				await canvas.requestSave?.()
+			}
+			new Notice('Voice changed')
+		} catch (err: unknown) {
+			console.error('Bragi Canvas voice changer error:', err)
+			const message = err instanceof Error ? err.message : String(err)
+			markNodeFailed(placeholder, message || 'Voice changer failed')
+			new Notice(`Voice changer failed: ${message}`)
+		} finally {
+			this.syncGenerating.delete(placeholder.id)
 		}
 	}
 
@@ -1011,37 +1281,6 @@ export default class BragiCanvas extends Plugin {
 		}
 	}
 
-	private getNodeAssetIdMap(node: CanvasNode): Record<string, string> {
-		const data = node.getData() as { bragiAssetId?: string; bragiAssetIds?: Record<string, string> }
-		const ids = { ...(data.bragiAssetIds || {}) }
-		if (data.bragiAssetId && !ids.legacy) ids.legacy = data.bragiAssetId
-		return ids
-	}
-
-	private getNodeAssetId(node: CanvasNode, provider: SeedanceAssetProviderId): string {
-		const data = node.getData() as { bragiAssetId?: string; bragiAssetIds?: Record<string, string> }
-		const scoped = data.bragiAssetIds?.[provider]
-		if (scoped) return scoped
-		if ((provider === 'bytedance' || provider === 'byteplus') && data.bragiAssetId) return data.bragiAssetId
-		return ''
-	}
-
-	private setNodeAssetId(node: CanvasNode, provider: SeedanceAssetProviderId, assetId: string): void {
-		const data = node.getData() as { bragiAssetId?: string; bragiAssetIds?: Record<string, string> }
-		const hadScopedId = !!data.bragiAssetIds?.[provider]
-		const ids = { ...(data.bragiAssetIds || {}) }
-		if (assetId) ids[provider] = assetId
-		else delete ids[provider]
-
-		const next: typeof data = { ...data }
-		if (Object.keys(ids).length > 0) next.bragiAssetIds = ids
-		else delete next.bragiAssetIds
-		if (!assetId && !hadScopedId && (provider === 'bytedance' || provider === 'byteplus')) {
-			delete next.bragiAssetId
-		}
-		node.setData(next)
-	}
-
 	showAssetIdModal(node: CanvasNode): void {
 		const data = node.getData() as { bragiAssetId?: string; bragiAssetIds?: Record<string, string> }
 		let providerId: SeedanceAssetProviderId = data.bragiAssetIds?.tokenrouter
@@ -1051,13 +1290,13 @@ export default class BragiCanvas extends Plugin {
 				: (data.bragiAssetIds?.bytedance || data.bragiAssetId)
 					? 'bytedance'
 					: 'tokenrouter'
-		let currentId = this.getNodeAssetId(node, providerId)
+		let currentId = getNodeAssetId(node, providerId)
 
 		const modal = new Modal(this.app)
 		modal.modalEl.classList.add('bragi-modal')
 		modal.titleEl.setText('Set seedance asset ID')
 		modal.contentEl.createEl('p', {
-			text: 'Asset ids are provider-specific. The same image can have separate tokenrouter, byteplus, and volcengine ids.',
+			text: 'Asset ids are provider-specific. The same file can have separate tokenrouter, byteplus, and volcengine ids.',
 			cls: 'setting-item-description',
 		})
 
@@ -1074,7 +1313,7 @@ export default class BragiCanvas extends Plugin {
 					.setValue(providerId)
 					.onChange(value => {
 						providerId = value as SeedanceAssetProviderId
-						currentId = this.getNodeAssetId(node, providerId)
+						currentId = getNodeAssetId(node, providerId)
 						inputValue = currentId
 						if (inputEl) inputEl.value = currentId
 					})
@@ -1094,7 +1333,7 @@ export default class BragiCanvas extends Plugin {
 
 		const clearBtn = btnContainer.createEl('button', { text: 'Clear' })
 		clearBtn.addEventListener('click', () => {
-			this.setNodeAssetId(node, providerId, '')
+			setNodeAssetId(node, providerId, '')
 			new Notice(`${SEEDANCE_ASSET_PROVIDER_LABELS[providerId]} asset ID cleared`)
 			modal.close()
 		})
@@ -1106,10 +1345,10 @@ export default class BragiCanvas extends Plugin {
 		saveBtn.addEventListener('click', () => {
 			const val = inputValue.trim()
 			if (val) {
-				this.setNodeAssetId(node, providerId, val)
+				setNodeAssetId(node, providerId, val)
 				new Notice(`${SEEDANCE_ASSET_PROVIDER_LABELS[providerId]} asset ID saved`)
 			} else {
-				this.setNodeAssetId(node, providerId, '')
+				setNodeAssetId(node, providerId, '')
 			}
 			modal.close()
 		})
@@ -1150,10 +1389,13 @@ export default class BragiCanvas extends Plugin {
 			})
 	}
 
-	// Rebuild a VideoProvider from a snapshot (provider name + settings)
-	private buildVideoProvider(providerName: string, outputDir: string): VideoProvider | null {
-		const spec = getProvider(providerName)
-		return spec?.makeVideo?.({ settings: this.settings, app: this.app, outputDir }) ?? null
+	// Rebuild the correct async provider from a persisted snapshot.
+	private buildTaskProvider(snapshot: TaskSnapshot): VideoProvider | AudioProvider | null {
+		const spec = getProvider(snapshot.providerName)
+		const ctx = { settings: this.settings, app: this.app, outputDir: snapshot.outputDir }
+		return snapshot.outputType === 'audio'
+			? spec?.makeAudio?.(ctx) ?? null
+			: spec?.makeVideo?.(ctx) ?? null
 	}
 
 	// Try to resume pending tasks whose canvas is now open.
@@ -1183,7 +1425,7 @@ export default class BragiCanvas extends Plugin {
 				continue
 			}
 
-			const provider = this.buildVideoProvider(snap.providerName, snap.outputDir)
+			const provider = this.buildTaskProvider(snap)
 			if (!provider || !provider.checkStatus) {
 				dropped++
 				continue
@@ -1207,7 +1449,7 @@ export default class BragiCanvas extends Plugin {
 		this.pendingTaskSnapshots = this.pendingTaskSnapshots.filter(s => s.canvasPath !== canvasPath)
 		this.persistPendingTasks()
 
-		if (resumed > 0) new Notice(`Resumed ${resumed} video generation${resumed > 1 ? 's' : ''}`)
+		if (resumed > 0) new Notice(`Resumed ${resumed} generation task${resumed > 1 ? 's' : ''}`)
 		if (dropped > 0) console.warn(`Bragi Canvas: Dropped ${dropped} pending task(s) — nodes or provider no longer available`)
 	}
 }
@@ -1262,6 +1504,10 @@ function providerSupportsVoiceClone(provider: AudioProvider): provider is AudioP
 
 function providerSupportsVoiceDesign(provider: AudioProvider): provider is AudioProvider & { designVoice: NonNullable<AudioProvider['designVoice']> } {
 	return typeof provider.designVoice === 'function'
+}
+
+function providerSupportsVoiceChange(provider: AudioProvider): provider is AudioProvider & { changeVoice: NonNullable<AudioProvider['changeVoice']> } {
+	return typeof provider.changeVoice === 'function'
 }
 
 function findFileNodeByPath(canvas: Canvas, filePath: string): CanvasNode | null {
@@ -1330,10 +1576,12 @@ function reusableVoiceRecord(
 		record.kind === 'clone'
 		&& record.provider === activeProvider
 		&& record.region === region
-		&& record.modelId === modelId
+		&& (activeProvider === 'elevenlabs' || record.modelId === modelId)
 		&& record.sourceHash === sourceHash
 	) || null
 }
+
+const voiceCloneInFlight = new Map<string, Promise<VoiceCloneResult>>()
 
 async function customVoiceRecordForOutput(
 	app: BragiCanvas['app'],
@@ -1388,22 +1636,41 @@ async function applyUpstreamVoiceReference(
 		return existing
 	}
 
-	new Notice('Creating voice reference...')
-	const ext = getFileExtension(sourcePath, 'mp3')
-	const mimeType = audioMimeType(sourcePath)
-	const filename = `voice.${ext}`
-	const audioUrl = activeProvider === 'dashscope'
-		? await uploadRef(undefined, binary, filename, mimeType)
-		: undefined
-	const clone = await provider.cloneVoice({
-		modelId,
-		audioUrl,
-		audioBytes: binary,
-		filename,
-		mimeType,
+	const cloneKey = [
+		activeProvider,
+		region,
+		activeProvider === 'elevenlabs' ? 'global-voice' : modelId,
 		sourceHash,
-		sourcePath,
-	})
+	].join(':')
+	let clonePromise = voiceCloneInFlight.get(cloneKey)
+	if (!clonePromise) {
+		new Notice('Creating voice reference...')
+		clonePromise = (async () => {
+			const ext = getFileExtension(sourcePath, 'mp3')
+			const mimeType = audioMimeType(sourcePath)
+			const filename = `voice.${ext}`
+			const audioUrl = activeProvider === 'dashscope'
+				? await uploadRef(undefined, binary, filename, mimeType)
+				: undefined
+			return provider.cloneVoice({
+				modelId,
+				audioUrl,
+				audioBytes: binary,
+				filename,
+				mimeType,
+				sourceHash,
+				sourcePath,
+			})
+		})()
+		voiceCloneInFlight.set(cloneKey, clonePromise)
+	}
+
+	let clone: VoiceCloneResult
+	try {
+		clone = await clonePromise
+	} finally {
+		if (voiceCloneInFlight.get(cloneKey) === clonePromise) voiceCloneInFlight.delete(cloneKey)
+	}
 
 	const record: CustomVoiceRecord = {
 		kind: 'clone',

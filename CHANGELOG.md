@@ -1,5 +1,151 @@
 # Changelog
 
+## Unreleased
+
+## 1.37.0
+
+- Upgraded the stable `midjourney-v8` model to Midjourney V8.2 through Legnext, replacing the unsupported quality control with Standard/2K resolution and adding V8.2-compatible stylize, chaos, raw style, stop, and weird controls.
+- Added token-aware Midjourney prompt flag handling and V8.2 catalog/request regression coverage while preserving explicit prompt flags and the existing individual-image result selection.
+- Bumped the plugin version to `1.37.0`.
+
+## 1.36.2
+
+- Fixed MCP reference-image generation races by waiting for newly imported Canvas edges before reading upstream inputs, including GPT Image 2 edit flows.
+- Added 1080p output for Seedance 2.5 in both the canvas generation bar and MCP model parameters.
+- Bumped the plugin version to `1.36.2`.
+
+## 1.36.1
+
+- Fixed portrait videos in native fullscreen playback so they are contained within the viewport instead of being cropped.
+- Kept canvas video thumbnails on the existing cover-fit behavior while applying fullscreen-specific contain-fit styling.
+- Bumped the plugin version to `1.36.1`.
+
+## 1.36.0
+
+- Upgraded the native xAI Grok Imagine image route to `grok-imagine-image-2.0` while preserving the stable Bragi `grok-imagine` model ID.
+- Added xAI Image 2.0 aspect ratio, 1K/2K resolution, and Low/Medium quality controls with provider-scoped fal.ai compatibility.
+- Upgraded Grok Video generation to `grok-imagine-video-1.5` for text-to-video, first-frame, and image-reference modes while keeping legacy xAI edit and extension routing.
+- Added xAI Grok provider, catalog, mode, payload, polling, and documentation regression coverage.
+- Bumped the plugin version to `1.36.0`.
+
+## 1.35.0
+
+- Added MiniMax-H3 video generation through APIMart with text-to-video, first-frame, first-last-frame, image-reference, and video-reference modes.
+- Added MiniMax-H3 image/video/audio Relay handling, strict frame-versus-reference validation, 4–15 second duration, 2K/768P output, adaptive/fixed ratios, and optional watermarking.
+- Added APIMart MiniMax-H3 request, relay, async polling, error, catalog, and documentation regression coverage.
+- Bumped the plugin version to `1.35.0`.
+
+## 1.34.2
+
+- Added SVRouter support for Seedance 2.5 through `sv-seedance-2.5`.
+- Forwarded SVRouter Seedance 2.5 mode and output format through gateway metadata.
+- Added a settings migration that backfills the Seedance 2.5 SVRouter provider connection without changing the active provider.
+- Expanded Seedance 2.5 and SV NewAPI video parameter regression coverage.
+- Bumped the plugin version to `1.34.2`.
+
+## 1.34.1
+
+- Added a configurable BytePlus Seedance task endpoint in provider settings.
+- Applied the configured BytePlus endpoint to Seedance 2.0, Seedance 2.0 Fast, and Seedance 2.5 task submission and polling.
+- Kept the current BytePlus Singapore endpoint as the default and made connection tests use the configured endpoint.
+- Added BytePlus Seedance endpoint regression coverage.
+- Bumped the plugin version to `1.34.1`.
+
+## 1.34.0
+
+- Added Seedance 2.5 video generation for Volcengine and BytePlus.
+- Supported Seedance 2.5 text-to-video, first-frame, first-last-frame, multimodal reference, video extension, and video editing modes.
+- Added Seedance 2.5 provider validation for duration, adaptive-only modes, resolution, output format, reference limits, and upstream model IDs.
+- Added Seedance 2.5 provider regression coverage.
+- Bumped the plugin version to `1.34.0`.
+
+## 1.33.0
+
+- Added Wan 3.0 video generation through DashScope, with text-to-video, first-frame, first-last-frame, image-ref, and video-ref modes.
+- Added image, video, audio, and PDF reference handling for Wan 3.0, including temporary HTTPS upload support for PDFs.
+- Added Wan 3.0 params for 480P/720P/1080P output, adaptive or fixed ratios, auto or 2-30 second duration, generated audio, and seed clamping.
+- Added DashScope Wan 3.0 request-shape and validation regression coverage.
+- Bumped the plugin version to `1.33.0`.
+
+## 1.32.0
+
+- Added Mureka Music under Audio → Music with prompt-to-song, upstream-lyrics-to-song, and instrumental generation.
+- Generalized the persistent async task queue to track and resume both audio and video tasks while preserving older video-only snapshots.
+- Unified native MiniMax and Mureka lyrics generation around ordered upstream text nodes, with the target node kept as the music/style prompt.
+- Added offline request, polling, download, lyrics guard, batching-contract, and async audio queue regression coverage.
+- Bumped the plugin version to `1.32.0`.
+
+## 1.31.3
+
+- Updated the fixed SVRouter gateway base URL to `https://gateway.one-take-ai.com`.
+- Bumped the plugin version to `1.31.3`.
+
+## 1.31.2
+
+- Fixed Pika Kling routing to use the current `kling-3.0` API paths.
+- Removed the unavailable Pika Kling 3.0 Omni route and hid the unsupported Pika quality selector.
+- Updated Pika provider regression coverage and provider rules.
+- Bumped the plugin version to `1.31.2`.
+
+## 1.31.1
+
+- Removed the forbidden `obsidianmd/ui/sentence-case` disable comment from the Denoise choice modal.
+- Changed Denoise option labels to sentence case for Obsidian community review.
+- Bumped the plugin version to `1.31.1`.
+
+## 1.31.0
+
+- Added Pika provider support for Kling 3.0 and Kling 3.0 Omni, including provider-scoped modes and static request verification.
+- Added provider-scoped Seedance Asset ID binding to audio file nodes through the canvas context menu and MCP, with `asset://` reuse during video generation.
+- Added Seedance 2.0 `4k` resolution support for the generation bar and MCP calls.
+- Added local NLM 35 as the default Denoise choice, with a configurable local service URL and static verification.
+- Bumped the plugin version to `1.31.0`.
+
+## 1.30.1
+
+- Removed forbidden `obsidianmd/ui/sentence-case` disable comments from Voice Changer UI copy.
+- Changed Voice Changer notices and tooltips to sentence case for Obsidian community review.
+- Bumped the plugin version to `1.30.1`.
+
+## 1.30.0
+
+- Added ElevenLabs Voice Changer for audio nodes using `eleven_multilingual_sts_v2`: the selected audio supplies content and emotion, one incoming audio supplies the target voice, and every click creates an independent parallel output node.
+- Reused cached ElevenLabs custom voices across TTS and Voice Changer, with in-flight clone deduplication for parallel conversions.
+- Fixed Kling 3.0 Omni video editing so native Kling and APIMart requests can combine one base video with reference images.
+- Added payload regression coverage for Kling 3.0 Omni base-video edits with multiple image references.
+- Bumped the plugin version to `1.30.0`.
+
+## 1.29.2
+
+- Fixed Legnext image result selection so single-image outputs prefer the first individual image instead of the composite preview grid.
+- Added static verification coverage for Legnext image result parsing.
+- Bumped the plugin version to `1.29.2`.
+
+## 1.29.1
+
+- Tuned fal.ai FLUX.2 Klein 9B base inference and request shaping.
+- Expanded static verification coverage for fal FLUX Klein routing.
+- Bumped the plugin version to `1.29.1`.
+
+## 1.29.0
+
+- Added fal.ai as a provider for FLUX.2 Klein 9B image generation, alongside BFL and Runpod.
+- Added static verification for fal FLUX Klein payload routing.
+- Fixed the Denoise toolbar action so it is hidden when no available provider supports the action.
+- Bumped the plugin version to `1.29.0`.
+
+## 1.28.0
+
+- Renamed SV NewAPI to SVRouter in provider-facing UI while keeping the same `svnewapi` settings key for compatibility, and fixed SVRouter asset registration to use the centralized gateway URL.
+- Added Kling 3.0 Omni through the native Kling and APIMart providers, including text-to-video, first/last-frame, multi-image reference, feature-video reference, and video-edit flows.
+- Added 3–15 second duration, Standard/Pro/4K quality, optional generated audio, source-audio retention, and advanced multi-shot/subject payload support while keeping the generator bar mode-specific and compact.
+- Exposed intelligent multi-shot generation as the default `Multi shots` control, with `Single shot` as the alternative, and clarified generated-audio choices as `Audio On` / `Audio Off`.
+- Added payload contract verification for both provider request shapes and native Omni task polling.
+- Added FLUX.2 Klein 9B image generation through BFL and Runpod, including reference-image generation, safety tolerance, provider-specific seed handling, denoise defaults, and optional color matching.
+- Fixed BytePlus and SVRouter asset failures so terminal `Result.Error.Message` / `Code` details surface when `FailedReason` is absent.
+- Added regression verification for BFL denoise, Kling Omni payloads, and BytePlus/SVRouter asset failure messages.
+- Bumped the plugin version to `1.28.0`.
+
 ## 1.27.3
 
 - Fixed SV NewAPI Seedance Auto duration by forwarding it as `metadata.duration = -1`, matching the direct BytePlus/Volcengine Ark Seedance behavior.

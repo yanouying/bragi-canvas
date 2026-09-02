@@ -17,7 +17,7 @@ Everything that makes a provider differ from the base model lives in its `suppor
 - `editableApiModelId?: boolean` — opt-in. Set `true` to expose the pencil editor for providers that accept arbitrary upstream model ids (e.g. BytePlus C-Dance). Ignored when `aggregated` is set.
 - `aggregated?: boolean` — the provider routes the model's modes to multiple upstream ids internally (e.g. DashScope Wan 2.7 -> t2v/i2v/r2v/videoedit; DashScope voice -> tts/enrollment models). Routing stays hard-coded in the provider; the catalog only marks it. Aggregated locks the id editor and shows a static label. Must not also set `editableApiModelId`.
 - `modes?: Mode[]` — restrict this provider to a subset of the model's `modes`. The mode dropdown and MCP schema only show the active provider's effective modes; unsupported modes are hidden (never shown as disabled / "not supported"). Provider resolution is strict-to-active — there is no mode-based provider fallback.
-- Param `providerOverrides[providerId]` — narrow a param's `options`/`default`/`min`/`max`/`step`/`unit` for one provider, or set `hidden: true` to drop the param entirely for that provider (e.g. MuleRouter Wan 2.7 omits `ratio` and uses lowercase resolutions).
+- Param `providerOverrides[providerId]` — narrow a param's `options`/`optionsByMode`/`default`/`min`/`max`/`step`/`unit` for one provider, or set `hidden: true` to drop it entirely for that provider (e.g. MuleRouter Wan 2.7 omits `ratio`; xAI Grok Video 1.5 extends reference-to-video duration to 15 seconds while the legacy fal route remains capped at 10).
 
 Example: Wan 2.7 (`src/models/wan.ts`) is one model with DashScope (aggregated, all modes) and MuleRouter (`modes: ['first-frame']`, lowercase resolution override, hidden `ratio`).
 
@@ -34,6 +34,13 @@ Example: Wan 2.7 (`src/models/wan.ts`) is one model with DashScope (aggregated, 
 
 When you add a model/provider, run the check; if it fails, fix the catalog rather than the script.
 
+## Legnext Midjourney V8.2
+
+- Bragi keeps the stable model ID `midjourney-v8` while displaying Midjourney V8.2 and injecting `--v 8.2` when the prompt does not already contain `--v` or `--version`.
+- Legnext accepts model and render controls inside the `/v1/diffusion` `text` field. V8.2 exposes aspect ratio, Standard/2K resolution (`--hd`), stylize, chaos, raw style, stop, and weird controls. It does not expose the rejected `--q` / `--quality` flag.
+- Explicit user-authored Midjourney flags win. Detect long and short aliases as complete tokens so `--s` does not collide with `--seed` and `--c` does not collide with `--cref`.
+- Completed image tasks prefer the first non-empty URL in `output.image_urls`; use `output.image_url` only as a backward-compatible grid fallback.
+
 ## APIMart Omni-Flash-Ext
 
 - Endpoint: `POST https://api.apimart.ai/v1/videos/generations`.
@@ -45,6 +52,50 @@ When you add a model/provider, run the check; if it fails, fix the catalog rathe
 - Reference video count must be 0 or 1. When `video_urls` is present, omit `duration`.
 - Supported duration values are 4, 6, 8, and 10 seconds.
 - Supported resolution values are `720p`, `1080p`, and `4k`.
+
+## APIMart MiniMax-H3
+
+- Bragi model ID: `minimax-h3`; APIMart model ID: `MiniMax-H3`.
+- Submit with `POST https://api.apimart.ai/v1/videos/generations`; poll with `GET https://api.apimart.ai/v1/tasks/{task_id}` and read the completed URL from `result.videos[0].url`.
+- Supported Bragi modes are `text-to-video`, `first-frame`, `first-last-frame`, `image-ref`, and `video-ref`. APIMart infers its upstream mode from the submitted reference fields; do not send a `mode` field.
+- `first-frame` and `first-last-frame` use `first_frame_image` / `last_frame_image`. They require exactly one or two ordered images, ignore aspect ratio, and cannot include reference image/video/audio fields.
+- `image-ref` sends up to 9 images in `image_urls` and may add up to 3 `audio_urls`. `video-ref` sends up to 3 `video_urls` and may combine them with up to 9 images and 3 audios. Audio cannot be the only reference modality.
+- Every image, video, and audio reference must be re-uploaded through Bragi Relay. The APIMart request receives only temporary HTTPS URLs; never send data URIs or arbitrary external URLs directly.
+- Prompt is required in every mode and must not exceed 7000 characters. Duration is a whole number from 4 through 15. Resolution is `2K` or `768P`.
+- Ratios are `21:9`, `16:9`, `4:3`, `1:1`, `3:4`, and `9:16`. `adaptive` is accepted for reference generation; text-to-video normalizes it to `16:9`, while frame-controlled modes omit the field.
+- `watermark` is a boolean and defaults to `false`. Webhooks are intentionally not exposed in the canvas model because Bragi's persistent task queue already owns completion tracking.
+
+## Volcengine and BytePlus Seedance 2.5
+
+- Bragi model ID: `seedance-2.5`; Volcengine model ID: `doubao-seedance-2-5-260628`; BytePlus model ID: `dreamina-seedance-2-5-260628`.
+- Volcengine submits to `POST https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks`. BytePlus defaults to `POST https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks`, and its provider settings can override the complete Seedance task endpoint for Seedance 2.0, 2.0 Fast, and 2.5. Both poll by appending `/{task_id}` to the configured task endpoint through the existing `SeedanceProvider`.
+- Supported Bragi modes are text-to-video, first-frame, first-last-frame, image reference, video reference, video extension, and video edit. First-frame inputs use `role: first_frame`; the second image in first-last-frame uses `role: last_frame`; multimodal references use `reference_image`, `reference_video`, and `reference_audio`.
+- Multimodal limits are 30 images, 10 videos, and 10 audio clips (50 references total). Audio-only reference input is supported through `video-ref` mode.
+- Duration defaults to Auto (`-1`) and accepts `-1` or 4–30 seconds. Video edit only accepts `-1`. Ratio defaults to `adaptive`; first-frame, first-last-frame, video-extend, and video-edit only accept `adaptive`. Text/reference generation also accepts `16:9`, `4:3`, `1:1`, `3:4`, `9:16`, and `21:9`.
+- Output resolution is 480p, 720p, or 1080p. Output format is MP4 or MOV; preserve a `.mov` extension when the completed task returns a MOV URL.
+- Volcengine sends local reference media through temporary HTTPS relay URLs and passes manually bound `bytedance` `asset://` IDs through unchanged. With BytePlus native asset credentials, reference media uses the existing `asset://` flow; without those credentials, Bragi falls back to relay URLs. Face-containing media may still require a provider-approved asset.
+
+## Kling 3.0 Omni
+
+- Bragi model ID: `kling-3.0-omni`; upstream model ID on both providers: `kling-v3-omni`.
+- Native Kling endpoint: `POST /v1/videos/omni-video`; Bragi tries the existing global `https://api.klingai.com` region first and falls back to the documented Beijing host when the AK is not registered globally. Task polling probes both regional hosts.
+- APIMart endpoint: `POST https://api.apimart.ai/v1/videos/generations`; task status uses `GET /v1/tasks/{task_id}`.
+- Supported modes are text-to-video, first-frame, first-last-frame, image reference, feature-video reference, and base-video edit.
+- Native Kling uses `image_list` entries with `first_frame` / `end_frame`; APIMart uses `image_with_roles` with `first_frame` / `last_frame`.
+- Reference-image mode adds missing `<<<image_N>>>` tokens so every ordered canvas image participates. Native Kling accepts up to 7 images without a video and 4 with either a feature or base video; APIMart feature-video mode accepts at most one first-frame image.
+- Video reference maps to `video_list.refer_type = feature`; video edit maps to `base` and may combine the base video with ordinary reference images (`image_list` on Kling, `image_urls` on APIMart). Video edit adds missing image tokens, omits duration/aspect ratio, disables generated audio, and follows the source clip duration.
+- Duration is an integer from 3 through 15. Quality values are `std`, `pro`, and `4k`. Generated audio is unavailable when `video_list` is present.
+- Keep the generator bar compact: expose duration, ratio, quality, the mode-relevant audio control, and a `Multi shots` / `Single shot` toggle. `Multi shots` is the default and maps to intelligent splitting (`multi_shot = true`, `shot_type = intelligence`). Advanced callers may still pass custom `multi_prompt` shot lists and `element_list` directly.
+
+## Pika Kling
+
+- Base URL: `https://api.dev.pika.art`. Authenticate every request with the configured Pika key in the `X-API-Key` header.
+- Bragi Kling 3.0 maps to Pika `kling-3.0`. Text-to-video and first-frame generation route through `/v1/media/kling/kling-3.0/text-to-video` and `/v1/media/kling/kling-3.0/image-to-video`; motion control uses `/v1/media/kling/kling-3.0/motion-control`.
+- Pika does not expose Bragi's Kling 3.0 quality selector or first-last-frame generation, so hide the quality selector for this provider.
+- Pika does not list a compatible Kling 3.0 Omni model, so Bragi does not expose Pika for Kling 3.0 Omni.
+- Send Pika reference images and videos as Bragi temporary Relay HTTPS URLs.
+- Poll all submitted tasks through `GET /v1/media/jobs/{id}`. On completion, use `output.video.url`, falling back to `GET /v1/media/jobs/{id}/content` when the status payload omits the content URL.
+- Do not add Pika Kling O1 or map it to an existing Bragi model: Pika exposes it only as video-to-video and Bragi has no exact catalogue match. Pika also has no exact Kling 2.6 mapping.
 
 ## SuChuang Gemini Omni
 

@@ -19,9 +19,9 @@ export interface VideoProvider {
 	checkStatus?(taskId: string): Promise<GenerateVideoResult>
 }
 
-export interface GenerateAudioResult {
-	filePath: string
-}
+export type GenerateAudioResult =
+	| { done?: true; filePath: string; taskId?: never }
+	| { done: false; taskId: string; filePath?: never }
 
 export interface VoiceOption {
 	id: string
@@ -75,10 +75,21 @@ export interface VoiceDesignResult {
 	previewUrl?: string
 }
 
+export interface VoiceChangeOptions {
+	voiceId: string
+	modelId?: string
+	audioBytes: ArrayBuffer
+	filename?: string
+	mimeType?: string
+	outputFormat?: string
+}
+
 export interface AudioProvider {
 	name: string
 	generateAudio(prompt: string, options: { mode: 'tts' | 'music' | 'sound-effect', modelId?: string, [k: string]: unknown }): Promise<GenerateAudioResult>
+	checkStatus?(taskId: string): Promise<GenerateAudioResult>
 	listVoices?(options?: ListVoicesOptions): Promise<VoiceOption[]>
 	cloneVoice?(options: VoiceCloneOptions): Promise<VoiceCloneResult>
 	designVoice?(options: VoiceDesignOptions): Promise<VoiceDesignResult>
+	changeVoice?(options: VoiceChangeOptions): Promise<GenerateAudioResult>
 }

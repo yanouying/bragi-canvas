@@ -510,6 +510,17 @@
 	object-fit: cover;
 }
 
+/* Native fullscreen should show the whole frame, especially for portrait video. */
+.canvas-node-content.media-embed.video-embed video:fullscreen,
+.canvas-node-content.media-embed.video-embed video:-webkit-full-screen {
+	width: 100vw;
+	height: 100vh;
+	max-width: 100vw;
+	max-height: 100vh;
+	object-fit: contain;
+	background-color: #000;
+}
+
 /* Audio embed nodes: Obsidian draws a border on WebKit's native player chrome */
 .canvas-node-content.media-embed audio {
 	border: none;
@@ -634,6 +645,17 @@
 .bragi-canvas-menu .clickable-icon {
 	color: var(--bragi-text);
 	--icon-size: 20px;
+}
+
+.bragi-canvas-menu .bragi-voice-changer.is-disabled {
+	opacity: 0.35;
+	cursor: not-allowed;
+}
+
+.bragi-canvas-menu .bragi-voice-changer.is-disabled:hover,
+.bragi-canvas-menu .bragi-voice-changer.is-disabled:active {
+	background: transparent;
+	color: var(--bragi-text);
 }
 
 .bragi-canvas-menu .bragi-labeled-menu-button {
@@ -3099,7 +3121,6 @@ body.bragi-annotation-mode-active .canvas-wrapper.bragi-annotation-mode .canvas-
 	color: var(--bragi-text);
 	flex-shrink: 0;
 }
-
 
 /* Pannellum 2.5.7 runtime CSS. Loaded through Obsidian's static stylesheet instead of runtime <style> injection. */
 /* Pannellum 2.5.7, https://github.com/mpetroff/pannellum */

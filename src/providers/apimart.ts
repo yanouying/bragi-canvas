@@ -5,6 +5,8 @@ import { requestUrl } from 'obsidian'
 import { stringParam } from './params'
 import { BUILTIN_BRAGI_RELAY } from './bragi-relay'
 import { uploadRef } from './upload'
+import { buildApimartKlingOmniRequest, KLING_OMNI_MODEL_ID } from './kling-omni-payload'
+import { buildApimartMinimaxH3Request, MINIMAX_H3_MODEL_ID } from './apimart-minimax-h3-payload'
 
 /**
  * APIMart provider.
@@ -14,8 +16,8 @@ import { uploadRef } from './upload'
  *   2. GET  /v1/tasks/{task_id}    → polls; on "completed" returns result.images[0].url[0]
  *   3. Download that URL and write to the vault.
  *
- * Omni-Flash-Ext video generation uses the same task endpoint, with
- * videos returned at result.videos[0].url[0].
+ * Video models use the same task endpoint. Omni-Flash-Ext and MiniMax-H3
+ * results are returned at result.videos[0].url (string or string array).
  */
 const DEFAULT_MODEL = 'gpt-image-2'
 const DEFAULT_VIDEO_MODEL = 'Omni-Flash-Ext'
@@ -26,7 +28,7 @@ const FIRST_POLL_DELAY_MS = 10000
 const MAX_WAIT_MS = 300000
 const VIDEO_DURATIONS = new Set([4, 6, 8, 10])
 const BRAGI_RELAY_BASE = BUILTIN_BRAGI_RELAY.endpoint.replace(/\/+$/, '')
-type RelayAssetKind = 'image' | 'video'
+type RelayAssetKind = 'image' | 'video' | 'audio'
 
 async function sleep(ms: number): Promise<void> {
 	return new Promise(r => window.setTimeout(r, ms))
@@ -82,14 +84,16 @@ function extensionFromMime(mimeType: string, kind: RelayAssetKind): string {
 	if (mime.includes('quicktime')) return 'mov'
 	if (mime.includes('webm')) return 'webm'
 	if (mime.includes('mp4')) return 'mp4'
-	return kind === 'image' ? 'jpg' : 'mp4'
+	if (mime.includes('wav')) return 'wav'
+	if (mime.includes('mpeg') || mime.includes('mp3')) return 'mp3'
+	return kind === 'image' ? 'jpg' : kind === 'video' ? 'mp4' : 'mp3'
 }
 
 function extensionFromUrl(url: string, kind: RelayAssetKind): string {
 	const clean = url.split(/[?#]/)[0].toLowerCase()
 	const match = clean.match(/\.([a-z0-9]+)$/)
 	if (match?.[1]) return match[1]
-	return kind === 'image' ? 'jpg' : 'mp4'
+	return kind === 'image' ? 'jpg' : kind === 'video' ? 'mp4' : 'mp3'
 }
 
 function headerValue(headers: Record<string, string>, name: string): string {
@@ -105,8 +109,8 @@ function isGenericContentType(contentType: string): boolean {
 
 function fallbackMime(kind: RelayAssetKind, ext: string): string {
 	if (kind === 'image') return ext === 'jpg' ? 'image/jpeg' : `image/${ext}`
-	if (ext === 'mov') return 'video/quicktime'
-	return `video/${ext}`
+	if (kind === 'video') return ext === 'mov' ? 'video/quicktime' : `video/${ext}`
+	return ext === 'mp3' ? 'audio/mpeg' : `audio/${ext}`
 }
 
 export class APIMartProvider implements ImageProvider, VideoProvider {
@@ -180,8 +184,14 @@ export class APIMartProvider implements ImageProvider, VideoProvider {
 		const modelId = stringParam(params?.modelId, DEFAULT_VIDEO_MODEL)
 
 		const genMode = stringParam(params?.genMode, '')
+		if (modelId === MINIMAX_H3_MODEL_ID) {
+			return this.generateMinimaxH3(prompt, params)
+		}
 		if (genMode === 'motion-control' || modelId.includes('motion-control')) {
 			return this.generateMotionControl(prompt, modelId, params)
+		}
+		if (modelId === KLING_OMNI_MODEL_ID) {
+			return this.generateKlingOmni(prompt, params)
 		}
 
 		const resolution = stringParam(params?.resolution, '720p').toLowerCase()
@@ -236,6 +246,63 @@ export class APIMartProvider implements ImageProvider, VideoProvider {
 		const taskId = first?.task_id || first?.id
 		if (!taskId) {
 			throw new Error(`APIMart: no task_id in video submit response — ${JSON.stringify(submitData).substring(0, 200)}`)
+		}
+		return { done: false, taskId }
+	}
+
+	private async generateMinimaxH3(prompt: string, params?: Record<string, unknown>): Promise<GenerateVideoResult> {
+		const refImages = await Promise.all(arrayParam(params?.refImages).map(ref => this.ensureRelayUrl(ref, 'image')))
+		const refVideos = await Promise.all(arrayParam(params?.refVideos).map(ref => this.ensureRelayUrl(ref, 'video')))
+		const refAudios = await Promise.all(arrayParam(params?.refAudios).map(ref => this.ensureRelayUrl(ref, 'audio')))
+		const body = buildApimartMinimaxH3Request(prompt, { ...(params || {}), refImages, refVideos, refAudios })
+
+		const resp = await requestUrl({
+			url: `${API_BASE}/videos/generations`,
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${this.apiKey}`,
+			},
+			body: JSON.stringify(body),
+			throw: false,
+		})
+
+		if (resp.status === 401 || resp.status === 403) throw new Error('APIMart: invalid API key')
+		if (resp.status >= 400) throw new Error(`APIMart MiniMax-H3: ${parseApimartError(resp)}`)
+
+		const submitData = resp.json
+		const first = submitData?.data?.[0]
+		const taskId = first?.task_id || first?.id
+		if (!taskId) {
+			throw new Error(`APIMart MiniMax-H3: no task_id in submit response — ${JSON.stringify(submitData).substring(0, 200)}`)
+		}
+		return { done: false, taskId }
+	}
+
+	private async generateKlingOmni(prompt: string, params?: Record<string, unknown>): Promise<GenerateVideoResult> {
+		const refImages = await Promise.all(arrayParam(params?.refImages).map(ref => this.ensureRelayUrl(ref, 'image')))
+		const refVideos = await Promise.all(arrayParam(params?.refVideos).map(ref => this.ensureRelayUrl(ref, 'video')))
+		const body = buildApimartKlingOmniRequest(prompt, { ...(params || {}), refImages, refVideos })
+
+		const resp = await requestUrl({
+			url: `${API_BASE}/videos/generations`,
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${this.apiKey}`,
+			},
+			body: JSON.stringify(body),
+			throw: false,
+		})
+
+		if (resp.status === 401 || resp.status === 403) throw new Error('APIMart: invalid API key')
+		if (resp.status >= 400) throw new Error(`APIMart Kling Omni: ${parseApimartError(resp)}`)
+
+		const submitData = resp.json
+		const first = submitData?.data?.[0]
+		const taskId = first?.task_id || first?.id
+		if (!taskId) {
+			throw new Error(`APIMart Kling Omni: no task_id in submit response — ${JSON.stringify(submitData).substring(0, 200)}`)
 		}
 		return { done: false, taskId }
 	}

@@ -10,6 +10,8 @@ import { AddModelModal } from './ui/add-model-modal'
 import { ProviderModelsModal } from './ui/provider-models-modal'
 import { removeProvider } from './ui/remove-provider-modal'
 import { migrateSettings } from './settings-migrations'
+import { DEFAULT_DENOISE_SERVICE_URL } from './denoise'
+import { BYTEPLUS_SEEDANCE_ENDPOINT } from './providers/seedance-endpoints'
 
 /** Legacy map kept because `renderModelGroup` looks up display names by id. */
 const PROVIDER_DISPLAY_NAMES: Record<string, string> = (() => {
@@ -94,13 +96,18 @@ export interface BragiSettings {
 		bedrockRegion: string
 		bytedance: string
 		byteplus: string
-		byteplusAccessKey: string
-		byteplusSecretKey: string
-		byteplusAssetGroupId: string
-		klingAk: string
-		klingSk: string
-		fal: string
+			byteplusSeedanceEndpoint: string
+			byteplusAccessKey: string
+			byteplusSecretKey: string
+			byteplusAssetGroupId: string
+			klingAk: string
+			klingSk: string
+			bfl: string
+			runpod: string
+			fal: string
+			pika: string
 		minimax: string
+		mureka: string
 		elevenlabs: string
 		legnext: string
 		tokenrouter: string
@@ -143,6 +150,7 @@ export interface BragiSettings {
 	knownCanvases: string[]
 	generatedAssets: GeneratedAssetRecord[]
 	updatePrompt: UpdatePromptState
+	denoiseServiceUrl: string
 
 	// MCP server
 	mcpEnabled: boolean
@@ -165,13 +173,18 @@ export const DEFAULT_SETTINGS: BragiSettings = {
 		bedrockRegion: 'us-east-1',
 		bytedance: '',
 		byteplus: '',
-		byteplusAccessKey: '',
-		byteplusSecretKey: '',
-		byteplusAssetGroupId: '',
-		klingAk: '',
-		klingSk: '',
-		fal: '',
+			byteplusSeedanceEndpoint: BYTEPLUS_SEEDANCE_ENDPOINT,
+			byteplusAccessKey: '',
+			byteplusSecretKey: '',
+			byteplusAssetGroupId: '',
+			klingAk: '',
+			klingSk: '',
+			bfl: '',
+			runpod: '',
+			fal: '',
+			pika: '',
 		minimax: '',
+		mureka: '',
 		elevenlabs: '',
 		legnext: '',
 		tokenrouter: '',
@@ -203,6 +216,7 @@ export const DEFAULT_SETTINGS: BragiSettings = {
 	knownCanvases: [],
 	generatedAssets: [],
 	updatePrompt: {},
+	denoiseServiceUrl: DEFAULT_DENOISE_SERVICE_URL,
 }
 
 export class BragiSettingTab extends PluginSettingTab {
@@ -262,6 +276,20 @@ export class BragiSettingTab extends PluginSettingTab {
 				.onClick(() => importInput.click()))
 
 		this.renderCloudStorageSection(containerEl)
+
+		// ── Denoise ──
+		addSettingHeading(containerEl, 'Denoise')
+
+		new Setting(containerEl)
+			.setName('CPU service URL')
+			.setDesc('Local CPU image-processing service. Local and hosted HTTP endpoints use the same API.')
+			.addText(text => text
+				.setPlaceholder(DEFAULT_DENOISE_SERVICE_URL)
+				.setValue(this.plugin.settings.denoiseServiceUrl)
+				.onChange(value => {
+					this.plugin.settings.denoiseServiceUrl = value.trim() || DEFAULT_DENOISE_SERVICE_URL
+					void this.plugin.saveSettings()
+				}))
 
 		// ── MCP server ──
 		addSettingHeading(containerEl, 'Mcp server')

@@ -2,6 +2,7 @@ import type BragiCanvas from './main'
 import type { Canvas, CanvasNode } from './types/canvas-internal'
 import { requestUrl } from 'obsidian'
 import { uploadRef } from './providers/upload'
+import { SVROUTER_BASE_URL } from './providers/svnewapi'
 
 // SV NewAPI (new-api gateway) asset-library flow. Unlike the direct byteplus /
 // tokenrouter / token360 flows which call the provider's asset API themselves, this
@@ -46,17 +47,28 @@ function gatewayErrorMessage(json: unknown, text: string, fallback: string): str
 	return stringValue(error?.message || body?.error || body?.message || text.substring(0, 200), fallback)
 }
 
-function normalizeBaseUrl(value: string | undefined): string {
-	const s = (value || '').trim()
-	return s.endsWith('/') ? s.slice(0, -1) : s
+function assetFailedReason(body: JsonRecord | null): string {
+	const result = asRecord(body?.Result) || asRecord(body?.result)
+	const error = asRecord(result?.Error) || asRecord(result?.error) || asRecord(body?.Error) || asRecord(body?.error)
+	return stringValue(
+		body?.failed_reason ||
+		body?.failedReason ||
+		body?.FailedReason ||
+		result?.FailedReason ||
+		result?.failed_reason ||
+		result?.failedReason ||
+		error?.Message ||
+		error?.message ||
+		error?.Code ||
+		error?.code,
+		'',
+	)
 }
 
 export function getSvNewApiAssetCreds(plugin: BragiCanvas): SvNewApiAssetCreds | null {
-	const p = plugin.settings.providers
-	const apiKey = (p.svnewapi || '').trim()
-	const baseUrl = normalizeBaseUrl(p.svnewapiBaseUrl)
-	if (!apiKey || !baseUrl) return null
-	return { baseUrl, apiKey }
+	const apiKey = (plugin.settings.providers.svnewapi || '').trim()
+	if (!apiKey) return null
+	return { baseUrl: SVROUTER_BASE_URL, apiKey }
 }
 
 function assetFileInfo(filePath: string): { assetType: AssetType; ext: string; mime: string } {
@@ -140,7 +152,7 @@ async function getGatewayAssetStatus(creds: SvNewApiAssetCreds, model: string, i
 		throw new Error(`SV NewAPI asset status failed: ${gatewayErrorMessage(r.json, r.text, `HTTP ${r.status}`)}`)
 	}
 	const body = asRecord(r.json)
-	const failedReason = stringValue(body?.failed_reason, '')
+	const failedReason = assetFailedReason(body)
 	return { status: stringValue(body?.status, 'Unknown'), failedReason: failedReason || undefined }
 }
 

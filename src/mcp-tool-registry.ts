@@ -14,6 +14,7 @@ import { getOrderedTextRefs } from './text-refs'
 import { getOrderedImages } from './ref-thumbnails'
 import type { TaskQueue, TaskSnapshot } from './task-queue'
 import type { BragiSettings } from './settings'
+import { getSeedanceAssetMediaKind, setNodeAssetId, type SeedanceAssetProviderId } from './asset-ids'
 
 export type GetCanvas = () => Canvas | null
 export type RunGeneration = (node: CanvasNode, result: PanelResult) => Promise<{
@@ -27,7 +28,6 @@ export interface McpToolResult {
 type ToolArgs<Args extends ToolSchema> = z.infer<z.ZodObject<Args>>
 
 type JsonMap = Record<string, unknown>
-type SeedanceAssetProviderId = 'tokenrouter' | 'byteplus' | 'bytedance'
 type BragiCanvasNodeData = AllCanvasNodeData & {
 	bragiAssetId?: string
 	bragiAssetIds?: Record<string, string>
@@ -336,7 +336,7 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 				toEnd: z.enum(['none', 'arrow']).optional().default('arrow').describe('Arrow at target end'),
 				label: z.string().optional().describe('Edge label'),
 			},
-			handler: ({ fromId, toId, fromSide, toSide, toEnd, label }) => {
+			handler: async ({ fromId, toId, fromSide, toSide, toEnd, label }) => {
 				const canvas = requireCanvas(getCanvas)
 				findNode(canvas, fromId)
 				findNode(canvas, toId)
@@ -351,8 +351,15 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 					toEnd,
 				}
 				if (label) edge.label = label
-				canvas.importData({ nodes: [], edges: [edge] })
-				void canvas.requestSave()
+				const full = canvas.getData()
+				canvas.importData({
+					...full,
+					edges: [...(full.edges || []), edge],
+				})
+				// MCP clients commonly connect a reference and call generate immediately.
+				// Wait for Canvas to materialize the runtime edge so getEdgesForNode() sees it.
+				await canvas.requestFrame()
+				await canvas.requestSave()
 				return ok({ edgeId })
 			},
 		},
@@ -540,6 +547,10 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 				if (!settings) throw new Error('Settings not available')
 
 				const canvas = requireCanvas(getCanvas)
+				// Flush any MCP-created nodes/edges before generation reads upstream refs.
+				// Without this barrier, a connect_nodes -> generate sequence can race the
+				// Canvas runtime and silently fall back to text-only image generation.
+				await canvas.requestFrame()
 				const node = findNode(canvas, nodeId)
 
 				const model = getModelById(modelId)
@@ -603,8 +614,8 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 					mode: selectedMode,
 					placeholderIds,
 					expectedOutputType,
-					hint: expectedOutputType === 'video'
-						? 'Video generation is async. Use list_pending_tasks / get_task_status to track progress.'
+					hint: expectedOutputType === 'video' || expectedOutputType === 'audio'
+						? 'Video and some audio providers are async. Use list_pending_tasks / get_task_status when a task appears; otherwise inspect the placeholder.'
 						: 'Generation runs in the background. Re-read the placeholder node to see when it is replaced with the result.',
 				})
 			},
@@ -613,7 +624,7 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 		{
 			category: 'Task tracking',
 			name: 'list_pending_tasks',
-			description: 'List all pending async generation tasks (currently only video tasks are tracked). Empty array means no in-flight async work.',
+			description: 'List all pending async audio and video generation tasks. Empty array means no tracked in-flight async work.',
 			inputSchema: {},
 			handler: () => {
 				if (!ctx.taskQueue) return ok([])
@@ -623,6 +634,7 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 					taskId: s.taskId,
 					modelName: s.modelName,
 					providerName: s.providerName,
+					outputType: s.outputType || 'video',
 					sourceNodeId: s.sourceNodeId,
 					placeholderNodeId: s.placeholderNodeId,
 					canvasPath: s.canvasPath,
@@ -687,7 +699,7 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 					label: z.string().optional(),
 				})),
 			},
-			handler: ({ edges }) => {
+			handler: async ({ edges }) => {
 				const canvas = requireCanvas(getCanvas)
 				const full = canvas.getData()
 				const created: string[] = []
@@ -712,7 +724,8 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 					...full,
 					edges: [...(full.edges || []), ...newEdges],
 				})
-				void canvas.requestSave()
+				await canvas.requestFrame()
+				await canvas.requestSave()
 				return ok({ edgeIds: created })
 			},
 		},
@@ -908,7 +921,7 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 		{
 			category: 'Files / assets',
 			name: 'set_asset_id',
-			description: 'Bind a provider-specific Seedance Asset ID to an image file node. Used for face-reference asset://<id> protocol. Pass empty string to clear.',
+			description: 'Bind a provider-specific Seedance Asset ID to an image or audio file node. Pass empty string to clear.',
 			inputSchema: {
 				nodeId: z.string(),
 				provider: z.enum(['tokenrouter', 'byteplus', 'bytedance']).optional().describe('Asset provider namespace. Defaults to tokenrouter.'),
@@ -918,17 +931,11 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 				const canvas = requireCanvas(getCanvas)
 				const node = findNode(canvas, nodeId)
 				const d = node.getData() as BragiCanvasNodeData
-				if (d.type !== 'file' || !/\.(png|jpg|jpeg|webp|bmp|tiff?|gif|heic|heif)$/i.test(d.file || '')) {
-					throw new Error('Asset ID only applies to image file nodes')
+				if (d.type !== 'file' || !getSeedanceAssetMediaKind(d.file || '')) {
+					throw new Error('Asset ID only applies to image or audio file nodes')
 				}
 				const providerId = (provider || 'tokenrouter') as SeedanceAssetProviderId
-				const next = { ...d }
-				const ids = { ...(next.bragiAssetIds || {}) }
-				if (assetId) ids[providerId] = assetId
-				else delete ids[providerId]
-				if (Object.keys(ids).length > 0) next.bragiAssetIds = ids
-				else delete next.bragiAssetIds
-				node.setData(next)
+				setNodeAssetId(node, providerId, assetId)
 				void canvas.requestSave()
 				return ok({ nodeId, provider: providerId, assetId: assetId || null })
 			},
@@ -1002,6 +1009,7 @@ export function createMcpToolRegistry(ctx: McpToolContext): McpToolDef[] {
 					taskId: snap.taskId,
 					modelName: snap.modelName,
 					providerName: snap.providerName,
+					outputType: snap.outputType || 'video',
 					sourceNodeId: snap.sourceNodeId,
 					placeholderNodeId: snap.placeholderNodeId,
 					canvasPath: snap.canvasPath,

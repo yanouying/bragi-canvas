@@ -1,17 +1,19 @@
 import type { ModelConfig, GenerationType, Mode } from './types'
 import { gptImage, gptImageOfficial } from './gpt-image'
+import { flux2Klein9b } from './flux'
 import { nanoBananaPro, nanoBanana2 } from './nano-banana'
 import { seedream5, seedream5Lite, seedream45 } from './seedream'
-import { seedance2, seedance2Fast } from './seedance'
-import { kling3, kling26 } from './kling'
+import { seedance25, seedance2, seedance2Fast } from './seedance'
+import { kling3, klingOmni3, kling26 } from './kling'
 import { happyHorseT2V, happyHorseI2V } from './happyhorse'
 import { veo31, veo31Lite } from './veo'
-import { zImageSpicy, qwenImageEditSpicy, wan27 } from './wan'
+import { zImageSpicy, qwenImageEditSpicy, wan30, wan27 } from './wan'
 import { gpt55, gpt55Pro, gemini31Pro, gemini35Flash, gemini3Flash, claudeOpus47, claudeSonnet46, qwen36Plus, grok43, grok4Fast } from './text-gen'
 import { grokImagine, grokVideo } from './grok'
 import { midjourneyV8, midjourneyNiji7 } from './midjourney'
 import { lumaUni1 } from './luma'
 import { omniFlashExt } from './omni-flash'
+import { minimaxH3 } from './minimax-h3'
 import {
 	elevenLabsTTS,
 	minimaxTTS,
@@ -21,12 +23,14 @@ import {
 	grokTTS,
 	elevenLabsMusic,
 	minimaxMusic,
+	murekaMusic,
 	elevenLabsSFX,
 } from './audio'
 
 // All registered models (default order within each type)
 export const ALL_MODELS: ModelConfig[] = [
 	// Image
+	flux2Klein9b,
 	nanoBananaPro,
 	nanoBanana2,
 	gptImage,
@@ -41,16 +45,20 @@ export const ALL_MODELS: ModelConfig[] = [
 	zImageSpicy,
 	qwenImageEditSpicy,
 	// Video
+	seedance25,
 	seedance2,
 	seedance2Fast,
 	kling3,
+	klingOmni3,
 	kling26,
 	happyHorseT2V,
 	happyHorseI2V,
+	wan30,
 	wan27,
 	veo31,
 	veo31Lite,
 	grokVideo,
+	minimaxH3,
 	omniFlashExt,
 	// Text
 	claudeOpus47,
@@ -72,6 +80,7 @@ export const ALL_MODELS: ModelConfig[] = [
 	grokTTS,
 	elevenLabsMusic,
 	minimaxMusic,
+	murekaMusic,
 	elevenLabsSFX,
 ]
 

@@ -9,8 +9,11 @@ import { uploadRef } from './upload'
 import { resolveOpenAIImageSize } from './openai-image-size'
 import { resolveSeedreamImageSize } from './seedream'
 
+// Fixed SVRouter gateway root (OpenAI-compatible; requests append `/v1/...`).
+export const SVROUTER_BASE_URL = 'https://gateway.one-take-ai.com'
+
 /**
- * SV NewAPI — our self-hosted new-api / One-API gateway. It exposes stable `sv-*`
+ * SVRouter — our self-hosted new-api / One-API gateway. It exposes stable `sv-*`
  * virtual model names (mapped to real upstreams via the channel `model_mapping`)
  * over an OpenAI-compatible surface:
  *   - text   → POST /v1/chat/completions   (handled by OpenAITextProvider in the registry)
@@ -27,7 +30,8 @@ const SV_IMAGE_BANANA_PRO = 'sv-nano-banana-pro'    // APIMart gemini-3-pro-imag
 // aspect-ratio `size` + 1k/2k/4k `resolution` tier — same shape as the direct APIMart provider.
 const SV_IMAGE_GPT_RE = /^sv-gpt-image-2(-official)?$/
 const SV_IMAGE_GPT_OFFICIAL = 'sv-gpt-image-2-official' // only this one honors `quality`
-const SV_VIDEO_SEEDANCE = 'sv-seedance-2.0'         // byteplus seedance: params go in `metadata`, not top-level
+// byteplus seedance: params go in `metadata`, not top-level.
+const SV_VIDEO_SEEDANCE_RE = /^sv-seedance-2\.(?:0|5)(?:-|$)/
 // Seedream's Ark upstream enforces a per-tier minimum pixel count, so its `size` must come
 // from the Seedream-specific map, not the smaller generic OpenAI table (kept as a fallback for
 // other OpenAI-compatible image models).
@@ -37,7 +41,7 @@ const DONE_STATUSES = new Set(['SUCCESS', 'SUCCEEDED', 'COMPLETED'])
 const FAILED_STATUSES = new Set(['FAILURE', 'FAILED', 'ERROR', 'CANCELLED', 'CANCELED'])
 const IMAGE_TASK_FIRST_POLL_DELAY_MS = 3000
 const IMAGE_TASK_POLL_INTERVAL_MS = 3000
-const IMAGE_TASK_MAX_WAIT_MS = 300000
+const IMAGE_TASK_MAX_WAIT_MS = 600000 // 10 minutes
 
 type JsonRecord = Record<string, unknown>
 
@@ -217,7 +221,7 @@ async function uploadRefMedia(label: string, ref: string): Promise<string> {
 }
 
 export class SvNewApiImageProvider implements ImageProvider {
-	name = 'SV NewAPI'
+	name = 'SVRouter'
 	private apiKey: string
 	private app: App
 	private outputDir: string
@@ -364,7 +368,7 @@ export class SvNewApiImageProvider implements ImageProvider {
 }
 
 export class SvNewApiVideoProvider implements VideoProvider {
-	name = 'SV NewAPI'
+	name = 'SVRouter'
 	private apiKey: string
 	private app: App
 	private outputDir: string
@@ -454,13 +458,20 @@ function buildVideoBody(
 	const ratio = optionalString(params.ratio || params.aspect_ratio || params.aspectRatio)
 	const duration = optionalString(params.duration || params.durationSeconds)
 	const resolution = optionalString(params.resolution)
+	const genMode = optionalString(params.genMode || params.gen_mode || params.mode)
+	const outputFormat = optionalString(params.output_format || params.outputFormat)
 
-	if (modelId === SV_VIDEO_SEEDANCE) {
+	if (SV_VIDEO_SEEDANCE_RE.test(modelId)) {
 		const metadata: JsonRecord = { watermark: false }
+		if (genMode) {
+			body.mode = genMode
+			metadata.genMode = genMode
+		}
 		if (ratio) metadata.ratio = ratio
 		if (duration) metadata.duration = duration === '-1' ? -1 : parseInt(duration, 10)
 		if (resolution) metadata.resolution = resolution
-		if (params.generate_audio !== undefined) metadata.generate_audio = params.generate_audio !== 'false'
+		if (params.generate_audio !== undefined) metadata.generate_audio = params.generate_audio !== false && params.generate_audio !== 'false'
+		if (outputFormat) metadata.output_format = outputFormat
 		body.metadata = metadata
 		// The gateway converts each entry to an Ark content[] reference part
 		// (image_url/reference_image, audio_url/reference_audio, video_url/reference_video).
@@ -481,7 +492,7 @@ function buildVideoBody(
 }
 
 export class SvNewApiAudioProvider implements AudioProvider {
-	name = 'SV NewAPI'
+	name = 'SVRouter'
 	private apiKey: string
 	private app: App
 	private outputDir: string

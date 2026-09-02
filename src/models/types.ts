@@ -36,6 +36,11 @@ export interface ParamOption {
 
 export interface ModelParamProviderOverride {
 	options?: ParamOption[]
+	/**
+	 * Provider-specific mode option sets. Replaces the base `optionsByMode` map
+	 * for this provider after the provider override is applied.
+	 */
+	optionsByMode?: Record<string, ParamOption[]>
 	default?: string | number
 	min?: number
 	max?: number
@@ -116,6 +121,8 @@ export interface ModelConfig {
 	type: GenerationType
 	supportedProviders: Record<string, ProviderConfig>  // provider name → config
 	modes: Mode[]
+	/** Infer the mode from connected upstream media instead of showing a mode selector. */
+	inferModeFromInputs?: boolean
 	params: ModelParam[]
 	voiceConfig?: {
 		builtin: boolean

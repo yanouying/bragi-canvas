@@ -9,11 +9,15 @@ import { GeminiProvider } from './gemini'
 import { SeedreamProvider } from './seedream'
 import { SeedanceProvider } from './seedance'
 import { KlingProvider } from './kling'
+import { PikaVideoProvider, testPikaConnection } from './pika'
 import { VeoProvider } from './veo'
 import { FalImageProvider, FalVideoProvider } from './fal'
 import { FalAudioProvider } from './fal-audio'
+import { BflImageProvider, testBflConnection } from './bfl'
+import { RunPodFluxImageProvider, testRunPodConnection } from './runpod'
 import { ElevenLabsProvider } from './elevenlabs'
 import { MiniMaxProvider } from './minimax'
+import { MurekaProvider, testMurekaConnection } from './mureka'
 import { LegnextProvider } from './legnext'
 import { APIMartProvider } from './apimart'
 import { SuchuangVideoProvider, testSuchuangConnection } from './suchuang'
@@ -23,14 +27,10 @@ import { XAIImageProvider, XAIVideoProvider, XAIAudioProvider } from './xai'
 import { TokenRouterImageProvider, TokenRouterTextProvider, TokenRouterVideoProvider } from './tokenrouter'
 import { Token360VideoProvider } from './token360'
 import { DashScopeAudioProvider, DashScopeVideoProvider, dashScopeUrl } from './dashscope'
-import { SvNewApiImageProvider, SvNewApiVideoProvider, SvNewApiAudioProvider } from './svnewapi'
+import { SvNewApiImageProvider, SvNewApiVideoProvider, SvNewApiAudioProvider, SVROUTER_BASE_URL } from './svnewapi'
+import { BYTEPLUS_SEEDANCE_ENDPOINT, normalizeSeedanceEndpoint } from './seedance-endpoints'
 
 const LUMA_ENDPOINT = 'https://luma.bragi.now'
-
-/** Normalize a user-entered gateway base URL: trim and drop any trailing slash. */
-function normalizeBaseUrl(value: string | undefined): string {
-	return (value || '').trim().replace(/\/+$/, '')
-}
 import { OpenAITextProvider, APIMartTextProvider, GeminiTextProvider, AnthropicTextProvider, BedrockClaudeTextProvider, XAITextProvider } from './text-gen'
 import { DashScopeTextProvider } from './dashscope-text'
 import { requestUrl } from 'obsidian'
@@ -91,6 +91,28 @@ async function testListModels(url: string, token: string): Promise<TestResult> {
 		})
 		if (resp.status === 200) return { ok: true, message: 'Connected.' }
 		if (resp.status === 401 || resp.status === 403) return { ok: false, message: 'Invalid API key.' }
+		return { ok: false, message: `Unexpected status ${resp.status}.` }
+	} catch (err: unknown) {
+		return { ok: false, message: `Network error: ${err?.message || err}` }
+	}
+}
+
+async function testSeedanceEndpoint(url: string, token: string): Promise<TestResult> {
+	try {
+		const resp = await requestUrl({
+			url,
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${token}`,
+			},
+			// Deliberately invalid body: a client error proves the endpoint and auth
+			// are reachable without creating a billable generation task.
+			body: '{}',
+			throw: false,
+		})
+		if (resp.status === 401 || resp.status === 403) return { ok: false, message: 'Invalid API key.' }
+		if (resp.status >= 200 && resp.status < 500 && resp.status !== 404) return { ok: true, message: 'Connected.' }
 		return { ok: false, message: `Unexpected status ${resp.status}.` }
 	} catch (err: unknown) {
 		return { ok: false, message: `Network error: ${err?.message || err}` }
@@ -242,6 +264,7 @@ export const PROVIDERS: ProviderSpec[] = [
 		docUrl: 'https://console.byteplus.com/ark',
 		fields: [
 			{ key: 'byteplus', label: 'ARK API Key', placeholder: '...', type: 'password' },
+			{ key: 'byteplusSeedanceEndpoint', label: 'Seedance endpoint', placeholder: BYTEPLUS_SEEDANCE_ENDPOINT, type: 'text' },
 			{ key: 'byteplusAccessKey', label: 'Access Key (optional)', placeholder: 'AK...', type: 'password' },
 			{ key: 'byteplusSecretKey', label: 'Secret Key (optional)', placeholder: 'SK...', type: 'password' },
 			{ key: 'byteplusAssetGroupId', label: 'Asset group ID (optional)', placeholder: 'group-2026...-xxxxx', type: 'text' },
@@ -252,13 +275,16 @@ export const PROVIDERS: ProviderSpec[] = [
 		makeImage: ({ settings, app, outputDir }) =>
 			new SeedreamProvider(settings.providers.byteplus, app, outputDir, 'https://ark.ap-southeast.bytepluses.com/api/v3/images/generations'),
 		makeVideo: ({ settings, app, outputDir }) =>
-			new SeedanceProvider(settings.providers.byteplus, app, outputDir, 'https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks'),
-		testConnection: (d) => testListModels('https://ark.ap-southeast.bytepluses.com/api/v3/models', d.byteplus || ''),
+			new SeedanceProvider(settings.providers.byteplus, app, outputDir, settings.providers.byteplusSeedanceEndpoint),
+		testConnection: (d) => testSeedanceEndpoint(
+			normalizeSeedanceEndpoint(d.byteplusSeedanceEndpoint, BYTEPLUS_SEEDANCE_ENDPOINT),
+			d.byteplus || '',
+		),
 	},
 	{
 		id: 'kling',
 		name: 'Kling',
-		docUrl: 'https://app.klingai.com/global/dev/document-api/',
+		docUrl: 'https://klingai.com/document-api/api/video/3-0-omni/video-omni',
 		fields: [
 			{ key: 'klingAk', label: 'Access Key', placeholder: 'AK', type: 'password' },
 			{ key: 'klingSk', label: 'Secret Key', placeholder: 'SK', type: 'password' },
@@ -271,6 +297,17 @@ export const PROVIDERS: ProviderSpec[] = [
 		makeVideo: ({ settings, app, outputDir }) =>
 			new KlingProvider(settings.providers.klingAk, settings.providers.klingSk, app, outputDir),
 		// Kling uses JWT with HMAC-SHA256; auth is complex. Skip network test for now — Save will fail fast at first use.
+	},
+	{
+		id: 'pika',
+		name: 'Pika',
+		docUrl: 'https://dev.pika.art/models',
+		fields: [{ key: 'pika', label: 'API key', placeholder: 'pk_...', type: 'password' }],
+		defaultRefDelivery: { image: 'relay', video: 'relay' },
+		isConfigured: (s) => !!s.providers.pika,
+		makeVideo: ({ settings, app, outputDir }) =>
+			new PikaVideoProvider(settings.providers.pika, app, outputDir),
+		testConnection: (d) => testPikaConnection(d.pika || ''),
 	},
 	{
 		id: 'fal',
@@ -340,6 +377,28 @@ export const PROVIDERS: ProviderSpec[] = [
 		},
 	},
 	{
+		id: 'bfl',
+		name: 'BFL',
+		docUrl: 'https://docs.bfl.ai/',
+		fields: [{ key: 'bfl', label: 'API Key', placeholder: 'bfl_...', type: 'password' }],
+		defaultRefDelivery: { image: 'inline' },
+		isConfigured: (s) => !!s.providers.bfl,
+		makeImage: ({ settings, app, outputDir }) =>
+			new BflImageProvider(settings.providers.bfl, app, outputDir),
+		testConnection: (d) => testBflConnection(d.bfl || ''),
+	},
+	{
+		id: 'runpod',
+		name: 'RunPod',
+		docUrl: 'https://www.runpod.io/serverless',
+		fields: [{ key: 'runpod', label: 'API Key', placeholder: 'rpa_...', type: 'password' }],
+		defaultRefDelivery: { image: 'inline' },
+		isConfigured: (s) => !!s.providers.runpod,
+		makeImage: ({ settings, app, outputDir }) =>
+			new RunPodFluxImageProvider(settings.providers.runpod, app, outputDir),
+		testConnection: (d) => testRunPodConnection(d.runpod || ''),
+	},
+	{
 		id: 'minimax',
 		name: 'MiniMax',
 		docUrl: 'https://platform.minimaxi.com/',
@@ -367,6 +426,16 @@ export const PROVIDERS: ProviderSpec[] = [
 				return { ok: false, message: `Network error: ${err?.message || err}` }
 			}
 		},
+	},
+	{
+		id: 'mureka',
+		name: 'Mureka',
+		docUrl: 'https://platform.mureka.ai/docs/en/quickstart.html',
+		fields: [{ key: 'mureka', label: 'API Key', placeholder: 'Mureka API key', type: 'password' }],
+		isConfigured: (s) => !!s.providers.mureka,
+		makeAudio: ({ settings, app, outputDir }) =>
+			new MurekaProvider(settings.providers.mureka, app, outputDir),
+		testConnection: (d) => testMurekaConnection(d.mureka || ''),
 	},
 	{
 		id: 'dashscope',
@@ -475,9 +544,9 @@ export const PROVIDERS: ProviderSpec[] = [
 	{
 		id: 'apimart',
 		name: 'APIMart',
-		docUrl: 'https://docs.apimart.ai/en/api-reference/videos/omni-flash-ext/generation',
+		docUrl: 'https://docs.apimart.ai/en/api-reference/videos/kling-v3-omni/generation',
 		fields: [{ key: 'apimart', label: 'API Key', placeholder: 'sk-...', type: 'password' }],
-		defaultRefDelivery: { image: 'relay', video: 'relay' },
+		defaultRefDelivery: { image: 'relay', video: 'relay', audio: 'relay' },
 		isConfigured: (s) => !!s.providers.apimart,
 		makeImage: ({ settings, app, outputDir }) =>
 			new APIMartProvider(settings.providers.apimart, app, outputDir),
@@ -557,30 +626,26 @@ export const PROVIDERS: ProviderSpec[] = [
 	},
 	{
 		id: 'svnewapi',
-		name: 'SV NewAPI',
-		// Self-hosted new-api / One-API gateway. The base URL is deployment-specific, so it is
-		// a configurable field (no domain is hardcoded); the gateway root has no `/v1` suffix.
+		name: 'SVRouter',
+		// Self-hosted new-api / One-API gateway behind a fixed domain; the gateway root has no `/v1` suffix.
 		fields: [
-			{ key: 'svnewapiBaseUrl', label: 'Base URL', placeholder: 'https://your-newapi-host', type: 'text' },
 			{ key: 'svnewapi', label: 'API Key', placeholder: 'sk-...', type: 'password' },
 		],
 		// The gateway forwards reference media as public relay URLs (fal/byteplus upstreams accept URLs).
 		defaultRefDelivery: { image: 'relay', video: 'relay' },
-		isConfigured: (s) => !!(s.providers.svnewapi && s.providers.svnewapiBaseUrl),
+		isConfigured: (s) => !!s.providers.svnewapi,
 		makeImage: ({ settings, app, outputDir }) =>
-			new SvNewApiImageProvider(settings.providers.svnewapi, app, outputDir, normalizeBaseUrl(settings.providers.svnewapiBaseUrl)),
+			new SvNewApiImageProvider(settings.providers.svnewapi, app, outputDir, SVROUTER_BASE_URL),
 		makeVideo: ({ settings, app, outputDir }) =>
-			new SvNewApiVideoProvider(settings.providers.svnewapi, app, outputDir, normalizeBaseUrl(settings.providers.svnewapiBaseUrl)),
+			new SvNewApiVideoProvider(settings.providers.svnewapi, app, outputDir, SVROUTER_BASE_URL),
 		makeAudio: ({ settings, app, outputDir }) =>
-			new SvNewApiAudioProvider(settings.providers.svnewapi, app, outputDir, normalizeBaseUrl(settings.providers.svnewapiBaseUrl)),
+			new SvNewApiAudioProvider(settings.providers.svnewapi, app, outputDir, SVROUTER_BASE_URL),
 		// Text is plain OpenAI /v1/chat/completions — reuse the shared OpenAI text client.
 		makeText: ({ settings }) =>
-			new OpenAITextProvider(settings.providers.svnewapi, `${normalizeBaseUrl(settings.providers.svnewapiBaseUrl)}/v1`),
+			new OpenAITextProvider(settings.providers.svnewapi, `${SVROUTER_BASE_URL}/v1`),
 		testConnection: (d) => {
-			const baseUrl = normalizeBaseUrl(d.svnewapiBaseUrl)
-			if (!baseUrl) return Promise.resolve({ ok: false, message: 'Base URL is empty.' })
 			if (!d.svnewapi) return Promise.resolve({ ok: false, message: 'API key is empty.' })
-			return testListModels(`${baseUrl}/v1/models`, d.svnewapi)
+			return testListModels(`${SVROUTER_BASE_URL}/v1/models`, d.svnewapi)
 		},
 	},
 ]

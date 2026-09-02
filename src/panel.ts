@@ -221,6 +221,11 @@ function supportsAudioIntent(model: ModelConfig, intent: AudioIntent): boolean {
 	return model.modes.includes('music') || model.modes.includes('sound-effect')
 }
 
+function musicSelectionNeedsLyrics(model: ModelConfig | null, params: Record<string, string | number>): boolean {
+	return (model?.id === 'minimax-music' && params.instrumental === 'false')
+		|| (model?.id === 'mureka-music' && params.generation_mode === 'lyrics')
+}
+
 function supportsVoiceSource(model: ModelConfig, source: VoiceMode): boolean {
 	const config = voiceConfigFor(model)
 	if (!model.modes.includes('tts')) return false
@@ -233,7 +238,11 @@ function supportsVoiceSource(model: ModelConfig, source: VoiceMode): boolean {
  * Infer the best default mode based on upstream inputs and model's supported modes.
  * Falls through priorities — if the model doesn't support a mode, skip it.
  */
-function inferMode(modes: Mode[], imageCount: number, videoCount: number): Mode {
+function inferMode(modes: Mode[], imageCount: number, videoCount: number, audioCount = 0): Mode {
+	// Audio refs are multimodal references, never first/last-frame controls.
+	if (audioCount > 0 && videoCount > 0 && modes.includes('video-ref')) return 'video-ref'
+	if (audioCount > 0 && imageCount > 0 && modes.includes('image-ref')) return 'image-ref'
+
 	// Image + video upstream → Kling Motion Control (character image + motion clip)
 	if (imageCount > 0 && videoCount > 0 && modes.includes('motion-control')) return 'motion-control'
 
@@ -242,7 +251,13 @@ function inferMode(modes: Mode[], imageCount: number, videoCount: number): Mode 
 	if (videoCount > 0 && modes.includes('video-extend')) return 'video-extend'
 	if (videoCount > 0 && modes.includes('video-edit')) return 'video-edit'
 
-	// 2+ images → prefer first-last-frame, then multi-ref, then image-ref
+	// 3+ images cannot be a first/last-frame pair; prefer a reference mode.
+	if (imageCount > 2) {
+		if (modes.includes('multi-image-ref')) return 'multi-image-ref'
+		if (modes.includes('image-ref')) return 'image-ref'
+	}
+
+	// 2 images → prefer first-last-frame, then multi-ref, then image-ref
 	if (imageCount >= 2) {
 		if (modes.includes('first-last-frame')) return 'first-last-frame'
 		if (modes.includes('multi-image-ref')) return 'multi-image-ref'
@@ -533,14 +548,16 @@ export function showGenerateBar(
 		modeSelect.innerHTML = ''
 		const { provider } = selectedModel ? resolveProvider(selectedModel, settings) : { provider: null }
 		const modes = selectedModel ? getProviderModes(selectedModel, provider) : []
-		if (!selectedModel || modes.length <= 1) {
+		if (!selectedModel || modes.length <= 1 || selectedModel.inferModeFromInputs) {
 			modeSelect.classList.add('bragi-hidden')
-			selectedMode = modes[0] || null
+			selectedMode = selectedModel?.inferModeFromInputs
+				? inferMode(modes, upstreamImageCount, upstreamVideoCount, upstreamAudioCount)
+				: modes[0] || null
 			return
 		}
 
 		modeSelect.classList.remove('bragi-hidden')
-		const inferred = inferMode(modes, upstreamImageCount, upstreamVideoCount)
+		const inferred = inferMode(modes, upstreamImageCount, upstreamVideoCount, upstreamAudioCount)
 
 		for (const mode of modes) {
 			const opt = createEl('option')
@@ -972,19 +989,12 @@ export function showGenerateBar(
 		let disabled = false
 		let title = ''
 
-		// MiniMax Music "With Lyrics" needs upstream text node
-		if (selectedModel?.id === 'minimax-music' && paramValues.instrumental === 'false') {
-			if (upstreamImageCount === 0 && upstreamVideoCount === 0) {
-				// Check if there are upstream text prompts (we stored count earlier)
-				// Actually we need to check upstream text — use the canvas
-				const canvas = node.canvas
-				if (canvas) {
-					const upstream = getUpstreamInputs(canvas, node)
-					if (upstream.prompts.length === 0) {
-						disabled = true
-						title = 'Connect a lyrics text node'
-					}
-				}
+		// Lyrics modes consume ordered upstream text while the target node stays the style prompt.
+		if (musicSelectionNeedsLyrics(selectedModel, paramValues)) {
+			const canvas = node.canvas
+			if (canvas && getUpstreamInputs(canvas, node).prompts.length === 0) {
+				disabled = true
+				title = 'Connect a lyrics text node'
 			}
 		}
 
