@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.38.0
+
+- Added asynchronous SVRouter image task submission and three-second polling for APIMart-backed routes, with a ten-minute maximum wait.
+- Preserved the legacy synchronous image endpoint as a compatibility fallback when the gateway does not expose asynchronous tasks.
+- Added SVRouter image task endpoint, polling, fallback, and reference-image regression coverage.
+- Bumped the plugin version to `1.38.0`.
+
 ## 1.37.0
 
 - Upgraded the stable `midjourney-v8` model to Midjourney V8.2 through Legnext, replacing the unsupported quality control with Standard/2K resolution and adding V8.2-compatible stylize, chaos, raw style, stop, and weird controls.
